@@ -1,4 +1,4 @@
-"""OPPP compensation dashboard for Hugging Face Gradio Spaces."""
+"""OPPP compensation dashboard: public executive view + hidden developer console."""
 from __future__ import annotations
 
 import hashlib
@@ -10,75 +10,108 @@ from datetime import datetime
 import gradio as gr
 import pandas as pd
 
+import db
 
-DISPLAY_COLUMNS = ["รอบรายงาน", "HCODE", "PID", "ชื่อ-นามสกุล", "วันเข้ารักษา", "PP", "FS", "ยอดรวม", "ไฟล์ต้นทาง"]
-LEDGER_COLUMNS = ["รหัสรายการ", "ประเภทเงิน", "บริการ", "จำนวนเงิน", "หมายเหตุ", "ผู้บันทึก", "เวลา"]
-
+ADMIN_USERNAME = os.environ.get("OPPP_ADMIN_USERNAME", "").strip()
 ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().lower()
 
+NAVY = gr.themes.Color(
+    name="navy",
+    c50="#eef2f8", c100="#d7e0ee", c200="#b0c2dd", c300="#88a3cb",
+    c400="#5c7fb0", c500="#0f3d68", c600="#0c3255", c700="#0a2844",
+    c800="#071d33", c900="#051422", c950="#030d16",
+)
+GOLD = gr.themes.Color(
+    name="gold",
+    c50="#fdf8ec", c100="#faf0d3", c200="#f3dfa0", c300="#eccd6c",
+    c400="#dcb041", c500="#c9a227", c600="#a8841e", c700="#846617",
+    c800="#5f4a10", c900="#3d2f0a", c950="#241b05",
+)
+
 THEME = gr.themes.Soft(
-    primary_hue="blue",
-    secondary_hue="emerald",
+    primary_hue=NAVY,
+    secondary_hue=GOLD,
     neutral_hue="slate",
     font=[gr.themes.GoogleFont("Sarabun"), "sans-serif"],
 )
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap');
 
 .gradio-container, .gradio-container * {
     font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
 }
-.gradio-container { background: linear-gradient(180deg, #f4f8fb 0%, #eef2f7 100%) !important; }
+.gradio-container { background: #f2f4f8 !important; }
 
 .oppp-header {
     display: flex;
     align-items: center;
-    gap: 16px;
-    background: linear-gradient(120deg, #2563eb 0%, #16a34a 100%);
+    gap: 18px;
+    background: linear-gradient(135deg, #0a2844 0%, #0f3d68 55%, #0c3255 100%);
     color: #ffffff;
-    padding: 20px 28px;
-    border-radius: 16px;
-    margin-bottom: 18px;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+    padding: 26px 30px;
+    border-radius: 6px;
+    border-bottom: 4px solid #c9a227;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 28px rgba(10, 40, 68, 0.25);
 }
-.oppp-header .icon { font-size: 2.4rem; line-height: 1; }
-.oppp-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #ffffff; }
-.oppp-header p { margin: 4px 0 0; opacity: 0.92; font-size: 0.95rem; }
+.oppp-header .icon { font-size: 2.6rem; line-height: 1; color: #e8c766; }
+.oppp-header h1 { margin: 0; font-size: 1.55rem; font-weight: 800; letter-spacing: 0.2px; }
+.oppp-header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+.oppp-header .badge {
+    margin-left: auto;
+    text-align: right;
+    font-size: 0.78rem;
+    opacity: 0.85;
+    line-height: 1.5;
+}
+
+.section-title h3 {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: #0a2844 !important;
+    border-bottom: 2px solid #c9a227 !important;
+    padding-bottom: 6px !important;
+    margin-bottom: 4px !important;
+}
 
 .card {
     background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 14px !important;
-    padding: 16px 18px !important;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
-    margin-bottom: 14px !important;
+    border: 1px solid #dde3ea !important;
+    border-radius: 10px !important;
+    padding: 18px 20px !important;
+    box-shadow: 0 2px 8px rgba(10, 40, 68, 0.05);
+    margin-bottom: 16px !important;
 }
-.login-card { border-left: 4px solid #2563eb !important; }
-.allocation-card { border-left: 4px solid #7c3aed !important; }
+.dev-card { border-left: 4px solid #c9a227 !important; }
 
-.hint-text { color: #b45309 !important; font-size: 0.85rem !important; }
-.status-line { font-weight: 600 !important; }
-
-.kpi-row { gap: 12px !important; margin-bottom: 16px !important; }
+.kpi-row { gap: 14px !important; margin-bottom: 16px !important; }
 .kpi-card {
-    border-radius: 14px !important;
-    padding: 6px 10px !important;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 4px 10px !important;
+    border-left: 4px solid #0f3d68 !important;
+    box-shadow: 0 2px 8px rgba(10, 40, 68, 0.06);
+    background: #ffffff !important;
 }
-.kpi-pp { background: #eff6ff !important; border-color: #bfdbfe !important; }
-.kpi-fs { background: #ecfdf5 !important; border-color: #a7f3d0 !important; }
-.kpi-total { background: #f5f3ff !important; border-color: #ddd6fe !important; }
-.kpi-count { background: #fff7ed !important; border-color: #fed7aa !important; }
+.kpi-card.gold { border-left-color: #c9a227 !important; }
 .kpi-card textarea, .kpi-card input {
-    font-size: 1.3rem !important;
-    font-weight: 700 !important;
-    color: #0f172a !important;
+    font-size: 1.35rem !important;
+    font-weight: 800 !important;
+    color: #0a2844 !important;
 }
 
-.footer-note { text-align: center !important; color: #94a3b8 !important; font-size: 0.8rem !important; margin-top: 12px !important; }
+.admin-toggle { max-width: 340px; margin: 0 0 10px auto !important; }
+.admin-toggle .label-wrap span { font-size: 0.8rem !important; color: #64748b !important; }
+
+.login-status { font-weight: 600 !important; font-size: 0.85rem !important; }
+.hint-text { color: #b45309 !important; font-size: 0.85rem !important; }
+.footer-note { text-align: center !important; color: #94a3b8 !important; font-size: 0.8rem !important; margin-top: 16px !important; }
 """
+
+
+# ---------------------------------------------------------------------------
+# Report file parsing (.xls -> DataFrame)
+# ---------------------------------------------------------------------------
 
 
 def text_value(value: object) -> str:
@@ -149,51 +182,8 @@ def export_csv(frame: pd.DataFrame, name: str) -> str:
     return path
 
 
-def empty_outputs(message: str):
-    empty = pd.DataFrame()
-    return message, "-", "-", "-", "-", empty, None, None
-
-
-def process_reports(files: list[str] | None):
-    if not files:
-        return empty_outputs("กรุณาเลือกไฟล์ .xls อย่างน้อย 1 ไฟล์")
-    parsed, errors = [], []
-    for path in files:
-        try:
-            parsed.append(parse_report(path))
-        except Exception as exc:
-            errors.append(f"{os.path.basename(path)}: {exc}")
-    if not parsed:
-        return empty_outputs("อ่านไฟล์ไม่สำเร็จ: " + "; ".join(errors))
-
-    records = pd.concat(parsed, ignore_index=True)
-    duplicate_count = int(records.duplicated("รหัสรายการ", keep="first").sum())
-    records = records.drop_duplicates("รหัสรายการ", keep="first")
-    summary = records.groupby("HCODE", as_index=False).agg(รายการ=("รหัสรายการ", "size"), PP=("PP", "sum"), FS=("FS", "sum"), ยอดรวม=("ยอดรวม", "sum")).sort_values(["ยอดรวม", "HCODE"], ascending=[False, True])
-    status = f"อ่านแล้ว {len(records):,} รายการ จาก {len(parsed)} ไฟล์"
-    if duplicate_count:
-        status += f" · ตัดรายการซ้ำ {duplicate_count:,} รายการ"
-    if errors:
-        status += " · ไฟล์ที่อ่านไม่สำเร็จ: " + "; ".join(errors)
-    return (
-        status,
-        f"{records['PP'].sum():,.2f} บาท",
-        f"{records['FS'].sum():,.2f} บาท",
-        f"{records['ยอดรวม'].sum():,.2f} บาท",
-        f"{len(records):,}",
-        summary,
-        export_csv(summary, "สรุปยอดตาม_HCODE"),
-        records,
-    )
-
-
 # ---------------------------------------------------------------------------
-# Login / role-based access
-#
-# ผู้ที่ยังไม่เข้าสู่ระบบ (role = "viewer") เห็นเฉพาะยอดสรุปตาม HCODE
-# ผู้เข้าสู่ระบบด้วยรหัสผ่านที่ถูกต้อง (role = "admin") จึงจะเห็น PID/ชื่อ/ข้อมูลดิบ/เครื่องมือจัดสรร
-# ข้อมูลรายบุคคลจะถูกคำนวณและส่งไปยังฝั่ง client ก็ต่อเมื่อ role เป็น admin เท่านั้น
-# เพื่อไม่ให้ข้อมูลหลุดผ่าน DOM ของแท็บที่ถูกซ่อนไว้
+# Login (hidden admin panel)
 # ---------------------------------------------------------------------------
 
 
@@ -201,79 +191,157 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def login(password: str, _role: str):
-    if not ADMIN_PASSWORD_HASH:
-        return "viewer", "⚠️ ยังไม่ได้ตั้งค่า OPPP_ADMIN_PASSWORD_HASH ใน Hugging Face Secrets จึงเข้าสู่ระบบไม่ได้"
-    if password and hash_password(password) == ADMIN_PASSWORD_HASH:
-        return "admin", "✅ เข้าสู่ระบบสำเร็จ: เห็นข้อมูลรายบุคคลและเครื่องมือจัดสรร"
-    return "viewer", "❌ รหัสผ่านไม่ถูกต้อง: เห็นเฉพาะยอดสรุปตาม HCODE"
+def login(username: str, password: str):
+    if not ADMIN_USERNAME or not ADMIN_PASSWORD_HASH:
+        return "viewer", "⚠️ เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า OPPP_ADMIN_USERNAME / OPPP_ADMIN_PASSWORD_HASH"
+    if username.strip() == ADMIN_USERNAME and password and hash_password(password) == ADMIN_PASSWORD_HASH:
+        return "admin", "✅ เข้าสู่ระบบสำเร็จ: เปิดหน้าผู้ดูแลระบบแล้ว"
+    return "viewer", "❌ ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
 
 
 def logout():
-    return "viewer", "ออกจากระบบแล้ว: เห็นเฉพาะยอดสรุปตาม HCODE"
+    return "viewer", "ออกจากระบบแล้ว"
 
 
-def render_details(records: pd.DataFrame | None, role: str):
-    is_admin = role == "admin"
-    code_choices: list[str] = []
-    if isinstance(records, pd.DataFrame) and not records.empty and is_admin:
-        people = records.groupby(["รอบรายงาน", "HCODE", "PID", "ชื่อ-นามสกุล"], as_index=False).agg(
-            รายการ=("รหัสรายการ", "size"), PP=("PP", "sum"), FS=("FS", "sum"), ยอดรวม=("ยอดรวม", "sum")
-        ).sort_values("ยอดรวม", ascending=False)
-        raw = records[DISPLAY_COLUMNS + ["รหัสรายการ"]].sort_values(["รอบรายงาน", "HCODE", "ชื่อ-นามสกุล"])
-        raw_path = export_csv(records, "ข้อมูล_OPPP_ตรวจแล้ว")
-        code_choices = [
-            f"{row['รหัสรายการ']} | {row['HCODE']} | {row['ชื่อ-นามสกุล']} | PP {row['PP']:.2f} FS {row['FS']:.2f}"
-            for _, row in records.sort_values(["รอบรายงาน", "HCODE"]).iterrows()
-        ]
+def toggle_admin(role: str):
+    return gr.update(visible=(role == "admin"))
+
+
+# ---------------------------------------------------------------------------
+# Executive dashboard (public, no login required)
+# ---------------------------------------------------------------------------
+
+TREND_COLUMNS = ["รอบรายงาน", "PP", "FS", "ยอดรวม"]
+RANKING_COLUMNS = ["HCODE", "รายการ", "PP", "FS", "ยอดรวม"]
+
+
+def refresh_dashboard():
+    try:
+        totals = db.get_overall_totals()
+        trend = db.get_monthly_trend()
+        ranking = db.get_summary_by_hcode()
+        error = None
+    except Exception as exc:  # noqa: BLE001 - surface any DB issue to the UI instead of crashing
+        totals = {}
+        trend = pd.DataFrame(columns=TREND_COLUMNS)
+        ranking = pd.DataFrame(columns=RANKING_COLUMNS)
+        error = str(exc)
+
+    count = int(totals.get("count") or 0)
+    if error:
+        updated = f"⚠️ เชื่อมต่อฐานข้อมูลไม่ได้: {error}"
     else:
-        people, raw, raw_path = pd.DataFrame(), pd.DataFrame(), None
+        updated = f"🟢 อัปเดตล่าสุด {datetime.now():%d/%m/%Y %H:%M:%S} น. · ข้อมูลสะสม {count:,} รายการ"
+
+    top10 = ranking.head(10) if not ranking.empty else ranking
 
     return (
-        people,
-        raw,
-        raw_path,
-        gr.update(visible=is_admin),
-        gr.update(visible=is_admin),
-        gr.update(visible=is_admin),
-        gr.update(choices=code_choices, value=None),
+        f"{float(totals.get('total') or 0):,.2f} บาท",
+        f"{float(totals.get('pp') or 0):,.2f} บาท",
+        f"{float(totals.get('fs') or 0):,.2f} บาท",
+        f"{count:,} รายการ",
+        f"{int(totals.get('hcode_count') or 0):,} แห่ง",
+        str(totals.get("latest_period") or "-"),
+        trend,
+        top10,
+        ranking,
+        updated,
     )
 
 
 # ---------------------------------------------------------------------------
-# Allocation ledger ("จัดสรรบริการ")
+# Developer console (hidden, admin-only)
 # ---------------------------------------------------------------------------
 
 
-def empty_ledger() -> pd.DataFrame:
-    return pd.DataFrame(columns=LEDGER_COLUMNS)
+def process_upload(files: list[str] | None, uploader: str):
+    if not files:
+        return "กรุณาเลือกไฟล์ .xls อย่างน้อย 1 ไฟล์"
+    if not uploader or not uploader.strip():
+        return "กรุณาระบุชื่อผู้บันทึกก่อนอัปโหลด"
+
+    lines = []
+    for path in files:
+        name = os.path.basename(path)
+        try:
+            frame = parse_report(path)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"❌ {name}: อ่านไฟล์ไม่สำเร็จ ({exc})")
+            continue
+
+        before = len(frame)
+        frame = frame.drop_duplicates("รหัสรายการ", keep="first")
+        internal_duplicate = before - len(frame)
+        report_period = frame["รอบรายงาน"].iloc[0] if not frame.empty else name
+
+        try:
+            outcome = db.insert_batch(report_period, name, uploader.strip(), frame)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"❌ {name}: บันทึกฐานข้อมูลไม่สำเร็จ ({exc})")
+            continue
+
+        skipped = outcome["duplicate_count"] + internal_duplicate
+        line = f"✅ {name} (รอบ {report_period}): บันทึกใหม่ {outcome['inserted_count']:,} รายการ"
+        if skipped:
+            line += f" · ข้ามรายการซ้ำ {skipped:,} รายการ"
+        lines.append(line)
+
+    return "\n".join(lines)
 
 
-def allocation_summary(records: pd.DataFrame | None, ledger: pd.DataFrame) -> pd.DataFrame:
-    if not isinstance(records, pd.DataFrame) or records.empty:
-        return pd.DataFrame()
-    source = records.melt(
-        id_vars=["รหัสรายการ", "HCODE", "PID", "ชื่อ-นามสกุล"],
-        value_vars=["PP", "FS"],
-        var_name="ประเภทเงิน",
-        value_name="ยอดต้นทาง",
-    )
-    if ledger is None or ledger.empty:
-        allocated = pd.DataFrame(columns=["รหัสรายการ", "ประเภทเงิน", "ยอดจัดสรรแล้ว"])
-    else:
-        allocated = ledger.groupby(["รหัสรายการ", "ประเภทเงิน"], as_index=False)["จำนวนเงิน"].sum().rename(
-            columns={"จำนวนเงิน": "ยอดจัดสรรแล้ว"}
-        )
-    merged = source.merge(allocated, on=["รหัสรายการ", "ประเภทเงิน"], how="left")
-    merged["ยอดจัดสรรแล้ว"] = merged["ยอดจัดสรรแล้ว"].fillna(0.0)
-    merged["คงเหลือ"] = merged["ยอดต้นทาง"] - merged["ยอดจัดสรรแล้ว"]
-    merged = merged[merged["ยอดต้นทาง"] != 0].sort_values(["HCODE", "ชื่อ-นามสกุล", "ประเภทเงิน"])
-    return merged
+def refresh_batches():
+    try:
+        batches = db.list_batches()
+    except Exception as exc:  # noqa: BLE001
+        return pd.DataFrame(), gr.update(choices=[], value=None), f"⚠️ โหลดประวัติไม่สำเร็จ: {exc}"
+
+    choices = [
+        f"{row.รหัสชุดข้อมูล} | {row.รอบรายงาน} | {row.ไฟล์ต้นทาง} | {row.สถานะ}"
+        for row in batches.itertuples()
+    ]
+    return batches, gr.update(choices=choices, value=None), ""
 
 
-def add_allocation(
-    records: pd.DataFrame | None,
-    ledger: pd.DataFrame | None,
+def rollback_selected(choice: str | None):
+    if not choice:
+        return "กรุณาเลือกรายการก่อน"
+    batch_id = choice.split(" | ", 1)[0].strip()
+    try:
+        db.set_batch_status(batch_id, "rolled_back")
+    except Exception as exc:  # noqa: BLE001
+        return f"ย้อนกลับไม่สำเร็จ: {exc}"
+    return "↩️ ย้อนกลับไฟล์นี้แล้ว ข้อมูลจะไม่ถูกนับในสรุปอีกต่อไป (กู้คืนได้ภายหลัง)"
+
+
+def restore_selected(choice: str | None):
+    if not choice:
+        return "กรุณาเลือกรายการก่อน"
+    batch_id = choice.split(" | ", 1)[0].strip()
+    try:
+        db.set_batch_status(batch_id, "active")
+    except Exception as exc:  # noqa: BLE001
+        return f"กู้คืนไม่สำเร็จ: {exc}"
+    return "♻️ กู้คืนไฟล์นี้กลับมาใช้งานแล้ว"
+
+
+def refresh_admin_views(role: str):
+    empty_choices = gr.update(choices=[], value=None)
+    if role != "admin":
+        return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame(), empty_choices, pd.DataFrame()
+    try:
+        people = db.get_people_summary()
+        raw = db.get_raw_records()
+        raw_path = export_csv(raw, "ข้อมูล_OPPP_ตรวจแล้ว") if not raw.empty else None
+        ledger = db.get_allocation_ledger()
+        choices = db.get_record_choices()
+        alloc_summary = db.get_allocation_summary()
+    except Exception:  # noqa: BLE001
+        return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame(), empty_choices, pd.DataFrame()
+    return people, raw, raw_path, ledger, gr.update(choices=choices, value=None), alloc_summary
+
+
+def add_allocation_db(
+    role: str,
     code_choice: str | None,
     money_type: str,
     service: str,
@@ -281,135 +349,150 @@ def add_allocation(
     note: str,
     recorder: str,
 ):
-    ledger = ledger if isinstance(ledger, pd.DataFrame) else empty_ledger()
-    if not isinstance(records, pd.DataFrame) or records.empty:
-        return ledger, pd.DataFrame(), "กรุณาประมวลผลรายงานก่อน", None
+    if role != "admin":
+        return "กรุณาเข้าสู่ระบบก่อน"
     if not code_choice:
-        return ledger, allocation_summary(records, ledger), "กรุณาเลือกรหัสรายการที่ต้องการจัดสรร", None
+        return "กรุณาเลือกรหัสรายการที่ต้องการจัดสรร"
     if not service or not service.strip():
-        return ledger, allocation_summary(records, ledger), "กรุณาระบุชื่อบริการ", None
+        return "กรุณาระบุชื่อบริการ"
     if not recorder or not recorder.strip():
-        return ledger, allocation_summary(records, ledger), "กรุณาระบุผู้บันทึก", None
+        return "กรุณาระบุผู้บันทึก"
     if amount is None or amount <= 0:
-        return ledger, allocation_summary(records, ledger), "จำนวนเงินต้องมากกว่า 0", None
+        return "จำนวนเงินต้องมากกว่า 0"
 
     code = code_choice.split(" | ", 1)[0].strip()
-    row = records.loc[records["รหัสรายการ"] == code]
-    if row.empty:
-        return ledger, allocation_summary(records, ledger), "ไม่พบรหัสรายการนี้ในรายงานที่ประมวลผลแล้ว", None
-
-    original = float(row.iloc[0][money_type])
-    already = 0.0
-    if not ledger.empty:
-        already = float(
-            ledger.loc[(ledger["รหัสรายการ"] == code) & (ledger["ประเภทเงิน"] == money_type), "จำนวนเงิน"].sum()
-        )
-    remaining = original - already
-
-    new_row = pd.DataFrame(
-        [
-            {
-                "รหัสรายการ": code,
-                "ประเภทเงิน": money_type,
-                "บริการ": service.strip(),
-                "จำนวนเงิน": float(amount),
-                "หมายเหตุ": note.strip() if note else "",
-                "ผู้บันทึก": recorder.strip(),
-                "เวลา": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        ]
-    )
-    ledger = pd.concat([ledger, new_row], ignore_index=True)
+    try:
+        original = db.get_record_amount(code, money_type)
+        if original is None:
+            return "ไม่พบรหัสรายการนี้ในฐานข้อมูล"
+        already = db.get_allocated_amount(code, money_type)
+        remaining = original - already
+        db.add_allocation(code, money_type, service.strip(), float(amount), note.strip() if note else "", recorder.strip())
+    except Exception as exc:  # noqa: BLE001
+        return f"บันทึกไม่สำเร็จ: {exc}"
 
     if amount > remaining:
-        message = f"⚠️ บันทึกแล้ว แต่จัดสรรเกินยอดคงเหลือ {remaining:,.2f} บาท (เกินไป {amount - remaining:,.2f} บาท)"
-    else:
-        message = f"บันทึกการจัดสรรแล้ว คงเหลือหลังจัดสรร {remaining - amount:,.2f} บาท"
-
-    return ledger, allocation_summary(records, ledger), message, export_csv(ledger, "สมุดจัดสรรบริการ")
+        return f"⚠️ บันทึกแล้ว แต่จัดสรรเกินยอดคงเหลือ {remaining:,.2f} บาท (เกินไป {amount - remaining:,.2f} บาท)"
+    return f"บันทึกการจัดสรรแล้ว คงเหลือหลังจัดสรร {remaining - amount:,.2f} บาท"
 
 
-def export_ledger(ledger: pd.DataFrame | None):
-    ledger = ledger if isinstance(ledger, pd.DataFrame) else empty_ledger()
-    if ledger.empty:
-        return None, "ยังไม่มีรายการจัดสรรให้ดาวน์โหลด"
-    return export_csv(ledger, "สมุดจัดสรรบริการ"), f"ดาวน์โหลดสมุดจัดสรร {len(ledger):,} รายการแล้ว"
-
-
-def import_ledger(path: str | None, records: pd.DataFrame | None):
-    if not path:
-        return empty_ledger(), pd.DataFrame(), "กรุณาเลือกไฟล์ CSV สมุดจัดสรรที่เคยดาวน์โหลดไว้"
+def export_ledger_csv():
     try:
-        loaded = pd.read_csv(path, encoding="utf-8-sig")
-    except Exception as exc:
-        return empty_ledger(), pd.DataFrame(), f"อ่านไฟล์ไม่สำเร็จ: {exc}"
-    missing = [col for col in LEDGER_COLUMNS if col not in loaded.columns]
-    if missing:
-        return empty_ledger(), pd.DataFrame(), f"ไฟล์นี้ไม่ใช่สมุดจัดสรรบริการ (ขาดคอลัมน์ {', '.join(missing)})"
-    loaded = loaded[LEDGER_COLUMNS]
-    return loaded, allocation_summary(records, loaded), f"นำเข้าสมุดจัดสรร {len(loaded):,} รายการแล้ว"
+        ledger = db.get_allocation_ledger()
+    except Exception:  # noqa: BLE001
+        return None
+    if ledger.empty:
+        return None
+    return export_csv(ledger, "สมุดจัดสรรบริการ")
 
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
 
 with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
+    role_state = gr.State("viewer")
+
+    with gr.Accordion("🔒 สำหรับผู้ดูแลระบบ", open=False, elem_classes="admin-toggle"):
+        with gr.Row():
+            username_box = gr.Textbox(label="ชื่อผู้ใช้", scale=1)
+            password_box = gr.Textbox(label="รหัสผ่าน", type="password", scale=1)
+        with gr.Row():
+            login_btn = gr.Button("เข้าสู่ระบบ", variant="primary", scale=1)
+            logout_btn = gr.Button("ออกจากระบบ", scale=1)
+        login_status = gr.Markdown(elem_classes="login-status")
+
     gr.HTML(
         """
         <div class="oppp-header">
-            <div class="icon">💰</div>
+            <div class="icon">🏛️</div>
             <div>
-                <h1>OPPP Compensation Dashboard</h1>
-                <p>สรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก</p>
+                <h1>ระบบติดตามเงินชดเชย OPPP</h1>
+                <p>สรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก — ภาพรวมผลการดำเนินงานสะสม</p>
             </div>
         </div>
         """
     )
 
-    role_state = gr.State("viewer")
-    records_state = gr.State(pd.DataFrame())
-    ledger_state = gr.State(empty_ledger())
-
-    with gr.Group(elem_classes="card login-card"):
-        gr.Markdown("### 🔐 เข้าสู่ระบบผู้ดูแล")
-        with gr.Row():
-            password_box = gr.Textbox(label="รหัสผ่านผู้ดูแล", type="password", scale=2)
-            login_btn = gr.Button("เข้าสู่ระบบ", scale=1, variant="primary")
-            logout_btn = gr.Button("ออกจากระบบ", scale=1)
-        login_status = gr.Markdown("ยังไม่ได้เข้าสู่ระบบ: เห็นเฉพาะยอดสรุปตาม HCODE", elem_classes="status-line")
-
-    with gr.Group(elem_classes="card"):
-        gr.Markdown("### 📤 อัปโหลดรายงาน")
-        with gr.Row():
-            files = gr.File(label="อัปโหลดรายงาน OPPP (.xls)", file_count="multiple", file_types=[".xls"], type="filepath", scale=3)
-            run = gr.Button("⚙️ ประมวลผลรายงาน", variant="primary", scale=1)
-        gr.Markdown(
-            "⚠️ อัปโหลดเฉพาะไฟล์ของรอบที่ต้องการสรุป และอย่าใส่ชุด 'รวมทุกเดือน' ร่วมกับไฟล์รายเดือนเดียวกัน",
-            elem_classes="hint-text",
-        )
-        status = gr.Markdown()
+    updated_badge = gr.Markdown("กำลังโหลดข้อมูล...")
 
     with gr.Row(elem_classes="kpi-row"):
-        with gr.Group(elem_classes="kpi-card kpi-pp"):
-            pp_total = gr.Textbox(label="💵 ยอด PP", interactive=False)
-        with gr.Group(elem_classes="kpi-card kpi-fs"):
-            fs_total = gr.Textbox(label="🩺 ยอด FS", interactive=False)
-        with gr.Group(elem_classes="kpi-card kpi-total"):
-            all_total = gr.Textbox(label="📈 ยอดรวม", interactive=False)
-        with gr.Group(elem_classes="kpi-card kpi-count"):
-            count_total = gr.Textbox(label="🧾 จำนวนรายการ", interactive=False)
+        with gr.Group(elem_classes="kpi-card"):
+            kpi_total = gr.Textbox(label="💰 ยอดชดเชยสะสมทั้งหมด", interactive=False)
+        with gr.Group(elem_classes="kpi-card"):
+            kpi_pp = gr.Textbox(label="💵 ยอด PP สะสม", interactive=False)
+        with gr.Group(elem_classes="kpi-card"):
+            kpi_fs = gr.Textbox(label="🩺 ยอด FS สะสม", interactive=False)
+    with gr.Row(elem_classes="kpi-row"):
+        with gr.Group(elem_classes="kpi-card gold"):
+            kpi_count = gr.Textbox(label="🧾 จำนวนรายการสะสม", interactive=False)
+        with gr.Group(elem_classes="kpi-card gold"):
+            kpi_hcode = gr.Textbox(label="🏥 จำนวนหน่วยบริการ", interactive=False)
+        with gr.Group(elem_classes="kpi-card gold"):
+            kpi_latest = gr.Textbox(label="📅 รอบข้อมูลล่าสุด", interactive=False)
 
-    with gr.Tab("📊 สรุปตาม HCODE"):
-        summary_table = gr.Dataframe(label="ยอดชดเชยรายหน่วยบริการ", interactive=False)
-        summary_download = gr.File(label="ดาวน์โหลด CSV สรุป HCODE")
+    with gr.Group(elem_classes="card"):
+        gr.Markdown("### 📈 แนวโน้มยอดชดเชยรายรอบ", elem_classes="section-title")
+        trend_plot = gr.LinePlot(
+            value=pd.DataFrame(columns=TREND_COLUMNS),
+            x="รอบรายงาน", y="ยอดรวม",
+            title=None, height=280, show_label=False,
+        )
 
-    with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล", visible=False) as people_tab:
-        people_table = gr.Dataframe(label="ยอดรวมรายบุคคล", interactive=False)
+    with gr.Group(elem_classes="card"):
+        gr.Markdown("### 🏆 อันดับหน่วยบริการตามยอดชดเชย (Top 10)", elem_classes="section-title")
+        top_hcode_plot = gr.BarPlot(
+            value=pd.DataFrame(columns=RANKING_COLUMNS),
+            x="HCODE", y="ยอดรวม",
+            title=None, height=280, show_label=False,
+        )
 
-    with gr.Tab("🗂️ ข้อมูลต้นทาง", visible=False) as raw_tab:
-        raw_table = gr.Dataframe(label="ข้อมูลหลังกันซ้ำ", interactive=False)
-        raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
+    with gr.Group(elem_classes="card"):
+        gr.Markdown("### 📊 สรุปยอดชดเชยรายหน่วยบริการ (ทั้งหมด)", elem_classes="section-title")
+        ranking_table = gr.Dataframe(value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False)
 
-    with gr.Tab("🧮 จัดสรรบริการ", visible=False) as allocation_tab:
-        with gr.Group(elem_classes="card allocation-card"):
-            gr.Markdown("### 🧮 จัดสรรบริการ\nจัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน")
+    refresh_timer = gr.Timer(30)
+
+    dashboard_outputs = [
+        kpi_total, kpi_pp, kpi_fs, kpi_count, kpi_hcode, kpi_latest,
+        trend_plot, top_hcode_plot, ranking_table, updated_badge,
+    ]
+
+    # -----------------------------------------------------------------
+    # Developer console (hidden until admin login)
+    # -----------------------------------------------------------------
+    with gr.Group(visible=False) as admin_section:
+        gr.Markdown("## 🛠️ หน้าผู้ดูแลระบบ / Developer")
+
+        with gr.Group(elem_classes="card dev-card"):
+            gr.Markdown("### 📤 อัปโหลดรายงานเดือนใหม่", elem_classes="section-title")
+            files = gr.File(label="ไฟล์รายงาน OPPP (.xls) — เลือกได้หลายไฟล์", file_count="multiple", file_types=[".xls"], type="filepath")
+            uploader_name = gr.Textbox(label="ผู้บันทึก", placeholder="ชื่อผู้อัปโหลด")
+            run = gr.Button("⚙️ ประมวลผลและบันทึกลงฐานข้อมูล", variant="primary")
+            gr.Markdown(
+                "⚠️ อัปโหลดไฟล์ของรอบใหม่ได้เรื่อยๆ ระบบจะรวมกับข้อมูลเดิมอัตโนมัติ และข้ามรายการที่ซ้ำกับที่มีอยู่แล้วให้เอง",
+                elem_classes="hint-text",
+            )
+            upload_status = gr.Markdown()
+
+        with gr.Group(elem_classes="card dev-card"):
+            gr.Markdown("### 🕒 ประวัติการอัปโหลด (ย้อนกลับได้หากอัปผิดไฟล์)", elem_classes="section-title")
+            batch_table = gr.Dataframe(interactive=False)
+            batch_dropdown = gr.Dropdown(label="เลือกไฟล์ที่ต้องการย้อนกลับ/กู้คืน", choices=[])
+            with gr.Row():
+                rollback_btn = gr.Button("↩️ ย้อนกลับไฟล์นี้")
+                restore_btn = gr.Button("♻️ กู้คืนไฟล์นี้")
+            batch_status = gr.Markdown()
+
+        with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล"):
+            people_table = gr.Dataframe(interactive=False)
+
+        with gr.Tab("🗂️ ข้อมูลต้นทาง"):
+            raw_table = gr.Dataframe(interactive=False)
+            raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
+
+        with gr.Tab("🧮 จัดสรรบริการ"):
+            gr.Markdown("จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน")
             code_dropdown = gr.Dropdown(label="รหัสรายการ (HCODE | ชื่อ | PP/FS ตั้งต้น)", choices=[])
             with gr.Row():
                 money_type_radio = gr.Radio(["PP", "FS"], label="ประเภทเงิน", value="PP")
@@ -419,45 +502,72 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 note_box = gr.Textbox(label="หมายเหตุ")
                 recorder_box = gr.Textbox(label="ผู้บันทึก")
             add_btn = gr.Button("➕ เพิ่มรายการจัดสรร", variant="primary")
-            allocation_status = gr.Markdown(elem_classes="status-line")
-        allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False)
-        remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False)
-        with gr.Row():
-            ledger_download = gr.File(label="ดาวน์โหลดสมุดจัดสรร (CSV)")
-            ledger_upload = gr.File(label="นำเข้าสมุดจัดสรรเดิม (CSV)", file_types=[".csv"], type="filepath")
-        gr.Markdown(
-            "Hugging Face Space ไม่เก็บข้อมูลถาวร กรุณาดาวน์โหลดสมุดจัดสรรหลังทำงานทุกครั้ง แล้วนำเข้ากลับมาในครั้งถัดไป",
-            elem_classes="footer-note",
-        )
+            allocation_status = gr.Markdown(elem_classes="login-status")
+            allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False)
+            remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False)
+            ledger_export_btn = gr.Button("ดาวน์โหลดสมุดจัดสรร (CSV)")
+            ledger_download = gr.File(label="ไฟล์สมุดจัดสรร")
 
-    detail_outputs = [people_table, raw_table, raw_download, people_tab, raw_tab, allocation_tab, code_dropdown]
+    admin_view_outputs = [people_table, raw_table, raw_download, allocation_table, code_dropdown, remaining_table]
 
-    run.click(
-        process_reports,
-        inputs=files,
-        outputs=[status, pp_total, fs_total, all_total, count_total, summary_table, summary_download, records_state],
-    ).then(render_details, inputs=[records_state, role_state], outputs=detail_outputs)
+    # -----------------------------------------------------------------
+    # Wiring
+    # -----------------------------------------------------------------
 
-    login_btn.click(login, inputs=[password_box, role_state], outputs=[role_state, login_status]).then(
-        render_details, inputs=[records_state, role_state], outputs=detail_outputs
+    demo.load(refresh_dashboard, outputs=dashboard_outputs).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    )
+    refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs)
+
+    login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]).then(
+        toggle_admin, inputs=role_state, outputs=admin_section
+    ).then(
+        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    ).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(lambda: "", outputs=password_box)
 
     logout_btn.click(logout, outputs=[role_state, login_status]).then(
-        render_details, inputs=[records_state, role_state], outputs=detail_outputs
+        toggle_admin, inputs=role_state, outputs=admin_section
+    )
+
+    run.click(
+        process_upload, inputs=[files, uploader_name], outputs=upload_status
+    ).then(
+        refresh_dashboard, outputs=dashboard_outputs
+    ).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    ).then(
+        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    )
+
+    rollback_btn.click(rollback_selected, inputs=batch_dropdown, outputs=batch_status).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    ).then(refresh_dashboard, outputs=dashboard_outputs).then(
+        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    )
+
+    restore_btn.click(restore_selected, inputs=batch_dropdown, outputs=batch_status).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    ).then(refresh_dashboard, outputs=dashboard_outputs).then(
+        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
     )
 
     add_btn.click(
-        add_allocation,
-        inputs=[records_state, ledger_state, code_dropdown, money_type_radio, service_box, amount_box, note_box, recorder_box],
-        outputs=[ledger_state, remaining_table, allocation_status, ledger_download],
-    ).then(lambda ledger: ledger, inputs=ledger_state, outputs=allocation_table)
+        add_allocation_db,
+        inputs=[role_state, code_dropdown, money_type_radio, service_box, amount_box, note_box, recorder_box],
+        outputs=allocation_status,
+    ).then(refresh_admin_views, inputs=role_state, outputs=admin_view_outputs)
 
-    ledger_upload.upload(
-        import_ledger, inputs=[ledger_upload, records_state], outputs=[ledger_state, remaining_table, allocation_status]
-    ).then(lambda ledger: ledger, inputs=ledger_state, outputs=allocation_table)
+    ledger_export_btn.click(export_ledger_csv, outputs=ledger_download)
 
 
 if __name__ == "__main__":
+    try:
+        db.init_db()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] เชื่อมต่อฐานข้อมูลไม่สำเร็จตอนเริ่มระบบ: {exc}")
+
     demo.launch(
         theme=THEME,
         css=CUSTOM_CSS,
