@@ -458,4 +458,9 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(theme=THEME, css=CUSTOM_CSS)
+    demo.launch(
+        theme=THEME,
+        css=CUSTOM_CSS,
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", 7860)),
+    )
