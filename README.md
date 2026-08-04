@@ -1,3 +1,13 @@
+---
+title: OPPP Compensation Dashboard
+emoji: 💰
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # OPPP Compensation Dashboard
 
 Dashboard สำหรับรวมยอดชดเชย PP และ FS ตามรหัสหน่วยบริการ HCODE 5 หลัก จากรายงาน OPPP นามสกุล `.xls`
@@ -12,8 +22,8 @@ streamlit run app.py
 ## เผยแพร่บน Hugging Face Spaces
 
 1. สร้าง GitHub repository แล้ว push ไฟล์ `app.py`, `requirements.txt` และ `README.md` ขึ้นไป
-2. สร้าง Hugging Face Space แบบ **Streamlit** และเชื่อม repository ดังกล่าว
-3. ตั้งค่าเป็น private หากรายงานมี PID หรือชื่อผู้รับบริการ
+2. สร้าง Hugging Face Space แบบ **Docker** ตั้งค่าเป็น Private และ push โค้ดจาก repository นี้เข้า Space
+3. Hugging Face จะ build จาก `Dockerfile` และเปิดแอปที่ port 7860 อัตโนมัติ
 
 Space จะเก็บข้อมูลที่อัปโหลดไว้เพียงชั่วคราว จึงให้ดาวน์โหลด `สมุดจัดสรรบริการ.csv` หลังทำงาน และอัปโหลดกลับมาในครั้งถัดไป เพื่อรักษาประวัติการแจกแจงยอด
 
