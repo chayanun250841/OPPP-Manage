@@ -16,6 +16,70 @@ LEDGER_COLUMNS = ["รหัสรายการ", "ประเภทเงิ
 
 ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().lower()
 
+THEME = gr.themes.Soft(
+    primary_hue="blue",
+    secondary_hue="emerald",
+    neutral_hue="slate",
+    font=[gr.themes.GoogleFont("Sarabun"), "sans-serif"],
+)
+
+CUSTOM_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+
+.gradio-container, .gradio-container * {
+    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
+}
+.gradio-container { background: linear-gradient(180deg, #f4f8fb 0%, #eef2f7 100%) !important; }
+
+.oppp-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(120deg, #2563eb 0%, #16a34a 100%);
+    color: #ffffff;
+    padding: 20px 28px;
+    border-radius: 16px;
+    margin-bottom: 18px;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+}
+.oppp-header .icon { font-size: 2.4rem; line-height: 1; }
+.oppp-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #ffffff; }
+.oppp-header p { margin: 4px 0 0; opacity: 0.92; font-size: 0.95rem; }
+
+.card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 14px !important;
+    padding: 16px 18px !important;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    margin-bottom: 14px !important;
+}
+.login-card { border-left: 4px solid #2563eb !important; }
+.allocation-card { border-left: 4px solid #7c3aed !important; }
+
+.hint-text { color: #b45309 !important; font-size: 0.85rem !important; }
+.status-line { font-weight: 600 !important; }
+
+.kpi-row { gap: 12px !important; margin-bottom: 16px !important; }
+.kpi-card {
+    border-radius: 14px !important;
+    padding: 6px 10px !important;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+    border: 1px solid transparent !important;
+}
+.kpi-pp { background: #eff6ff !important; border-color: #bfdbfe !important; }
+.kpi-fs { background: #ecfdf5 !important; border-color: #a7f3d0 !important; }
+.kpi-total { background: #f5f3ff !important; border-color: #ddd6fe !important; }
+.kpi-count { background: #fff7ed !important; border-color: #fed7aa !important; }
+.kpi-card textarea, .kpi-card input {
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+}
+
+.footer-note { text-align: center !important; color: #94a3b8 !important; font-size: 0.8rem !important; margin-top: 12px !important; }
+"""
+
 
 def text_value(value: object) -> str:
     if pd.isna(value):
@@ -287,58 +351,84 @@ def import_ledger(path: str | None, records: pd.DataFrame | None):
 
 
 with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
-    gr.Markdown("# 💰 OPPP Compensation Dashboard\nสรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก")
+    gr.HTML(
+        """
+        <div class="oppp-header">
+            <div class="icon">💰</div>
+            <div>
+                <h1>OPPP Compensation Dashboard</h1>
+                <p>สรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก</p>
+            </div>
+        </div>
+        """
+    )
 
     role_state = gr.State("viewer")
     records_state = gr.State(pd.DataFrame())
     ledger_state = gr.State(empty_ledger())
 
-    with gr.Row():
-        password_box = gr.Textbox(label="รหัสผ่านผู้ดูแล", type="password", scale=2)
-        login_btn = gr.Button("เข้าสู่ระบบ", scale=1)
-        logout_btn = gr.Button("ออกจากระบบ", scale=1)
-    login_status = gr.Markdown("ยังไม่ได้เข้าสู่ระบบ: เห็นเฉพาะยอดสรุปตาม HCODE")
+    with gr.Group(elem_classes="card login-card"):
+        gr.Markdown("### 🔐 เข้าสู่ระบบผู้ดูแล")
+        with gr.Row():
+            password_box = gr.Textbox(label="รหัสผ่านผู้ดูแล", type="password", scale=2)
+            login_btn = gr.Button("เข้าสู่ระบบ", scale=1, variant="primary")
+            logout_btn = gr.Button("ออกจากระบบ", scale=1)
+        login_status = gr.Markdown("ยังไม่ได้เข้าสู่ระบบ: เห็นเฉพาะยอดสรุปตาม HCODE", elem_classes="status-line")
 
-    with gr.Row():
-        files = gr.File(label="อัปโหลดรายงาน OPPP (.xls)", file_count="multiple", file_types=[".xls"], type="filepath")
-        run = gr.Button("ประมวลผลรายงาน", variant="primary")
-    gr.Markdown("อัปโหลดเฉพาะไฟล์ของรอบที่ต้องการสรุป และอย่าใส่ชุด 'รวมทุกเดือน' ร่วมกับไฟล์รายเดือนเดียวกัน")
-    status = gr.Markdown()
-    with gr.Row():
-        pp_total = gr.Textbox(label="ยอด PP", interactive=False)
-        fs_total = gr.Textbox(label="ยอด FS", interactive=False)
-        all_total = gr.Textbox(label="ยอดรวม", interactive=False)
-        count_total = gr.Textbox(label="จำนวนรายการ", interactive=False)
+    with gr.Group(elem_classes="card"):
+        gr.Markdown("### 📤 อัปโหลดรายงาน")
+        with gr.Row():
+            files = gr.File(label="อัปโหลดรายงาน OPPP (.xls)", file_count="multiple", file_types=[".xls"], type="filepath", scale=3)
+            run = gr.Button("⚙️ ประมวลผลรายงาน", variant="primary", scale=1)
+        gr.Markdown(
+            "⚠️ อัปโหลดเฉพาะไฟล์ของรอบที่ต้องการสรุป และอย่าใส่ชุด 'รวมทุกเดือน' ร่วมกับไฟล์รายเดือนเดียวกัน",
+            elem_classes="hint-text",
+        )
+        status = gr.Markdown()
 
-    with gr.Tab("สรุปตาม HCODE"):
+    with gr.Row(elem_classes="kpi-row"):
+        with gr.Group(elem_classes="kpi-card kpi-pp"):
+            pp_total = gr.Textbox(label="💵 ยอด PP", interactive=False)
+        with gr.Group(elem_classes="kpi-card kpi-fs"):
+            fs_total = gr.Textbox(label="🩺 ยอด FS", interactive=False)
+        with gr.Group(elem_classes="kpi-card kpi-total"):
+            all_total = gr.Textbox(label="📈 ยอดรวม", interactive=False)
+        with gr.Group(elem_classes="kpi-card kpi-count"):
+            count_total = gr.Textbox(label="🧾 จำนวนรายการ", interactive=False)
+
+    with gr.Tab("📊 สรุปตาม HCODE"):
         summary_table = gr.Dataframe(label="ยอดชดเชยรายหน่วยบริการ", interactive=False)
         summary_download = gr.File(label="ดาวน์โหลด CSV สรุป HCODE")
 
-    with gr.Tab("ตรวจสอบรายบุคคล", visible=False) as people_tab:
+    with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล", visible=False) as people_tab:
         people_table = gr.Dataframe(label="ยอดรวมรายบุคคล", interactive=False)
 
-    with gr.Tab("ข้อมูลต้นทาง", visible=False) as raw_tab:
+    with gr.Tab("🗂️ ข้อมูลต้นทาง", visible=False) as raw_tab:
         raw_table = gr.Dataframe(label="ข้อมูลหลังกันซ้ำ", interactive=False)
         raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
 
-    with gr.Tab("จัดสรรบริการ", visible=False) as allocation_tab:
-        gr.Markdown("จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน")
-        code_dropdown = gr.Dropdown(label="รหัสรายการ (HCODE | ชื่อ | PP/FS ตั้งต้น)", choices=[])
-        with gr.Row():
-            money_type_radio = gr.Radio(["PP", "FS"], label="ประเภทเงิน", value="PP")
-            service_box = gr.Textbox(label="บริการ", placeholder="เช่น ตรวจหลังคลอด")
-            amount_box = gr.Number(label="จำนวนเงิน", precision=2)
-        with gr.Row():
-            note_box = gr.Textbox(label="หมายเหตุ")
-            recorder_box = gr.Textbox(label="ผู้บันทึก")
-        add_btn = gr.Button("เพิ่มรายการจัดสรร", variant="primary")
-        allocation_status = gr.Markdown()
+    with gr.Tab("🧮 จัดสรรบริการ", visible=False) as allocation_tab:
+        with gr.Group(elem_classes="card allocation-card"):
+            gr.Markdown("### 🧮 จัดสรรบริการ\nจัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน")
+            code_dropdown = gr.Dropdown(label="รหัสรายการ (HCODE | ชื่อ | PP/FS ตั้งต้น)", choices=[])
+            with gr.Row():
+                money_type_radio = gr.Radio(["PP", "FS"], label="ประเภทเงิน", value="PP")
+                service_box = gr.Textbox(label="บริการ", placeholder="เช่น ตรวจหลังคลอด")
+                amount_box = gr.Number(label="จำนวนเงิน", precision=2)
+            with gr.Row():
+                note_box = gr.Textbox(label="หมายเหตุ")
+                recorder_box = gr.Textbox(label="ผู้บันทึก")
+            add_btn = gr.Button("➕ เพิ่มรายการจัดสรร", variant="primary")
+            allocation_status = gr.Markdown(elem_classes="status-line")
         allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False)
         remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False)
         with gr.Row():
             ledger_download = gr.File(label="ดาวน์โหลดสมุดจัดสรร (CSV)")
             ledger_upload = gr.File(label="นำเข้าสมุดจัดสรรเดิม (CSV)", file_types=[".csv"], type="filepath")
-        gr.Markdown("Hugging Face Space ไม่เก็บข้อมูลถาวร กรุณาดาวน์โหลดสมุดจัดสรรหลังทำงานทุกครั้ง แล้วนำเข้ากลับมาในครั้งถัดไป")
+        gr.Markdown(
+            "Hugging Face Space ไม่เก็บข้อมูลถาวร กรุณาดาวน์โหลดสมุดจัดสรรหลังทำงานทุกครั้ง แล้วนำเข้ากลับมาในครั้งถัดไป",
+            elem_classes="footer-note",
+        )
 
     detail_outputs = [people_table, raw_table, raw_download, people_tab, raw_tab, allocation_tab, code_dropdown]
 
@@ -368,4 +458,4 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=THEME, css=CUSTOM_CSS)
