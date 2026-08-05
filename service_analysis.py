@@ -54,7 +54,7 @@ RECONCILE_COLUMNS = [
     "อัตราจังหวัด (บาท/ครั้ง)", "ยอดที่ได้รับจัดสรรจริง (บาท)",
 ]
 
-_STATUS_RANK = {"🔴 ไม่พบ": 0, "🟡 ไม่แน่ชัด": 1, "🟢 คาดการณ์": 2, "-": 3}
+_STATUS_RANK = {"🔴 ไม่พบ": 0, "🟠 ใกล้เคียง": 1, "🟡 ไม่แน่ชัด": 2, "🟢 คาดการณ์": 3, "-": 4}
 
 
 def get_people_for_hcode(hcode: str) -> pd.DataFrame:
@@ -75,47 +75,64 @@ def predict_records(people: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for rec in people.to_dict(orient="records"):
-        pp_status, pp_combos = service_matching.resolve_combo(float(rec["PP"]))
-        fs_status, fs_combos = service_matching.resolve_combo(float(rec["FS"]))
+        pp_status, pp_combos, pp_diff = service_matching.resolve_combo(float(rec["PP"]))
+        fs_status, fs_combos, fs_diff = service_matching.resolve_combo(float(rec["FS"]))
         overall_status = min(pp_status, fs_status, key=lambda s: _STATUS_RANK[s])
         rows.append({
             "PID": rec["PID"],
             "ชื่อ-นามสกุล": rec["ชื่อ-นามสกุล"],
             "PP": rec["PP"],
             "FS": rec["FS"],
-            "บริการที่คาดการณ์ (PP)": service_matching.format_combo_text(pp_status, pp_combos),
-            "บริการที่คาดการณ์ (FS)": service_matching.format_combo_text(fs_status, fs_combos),
+            "บริการที่คาดการณ์ (PP)": service_matching.format_combo_text(pp_status, pp_combos, pp_diff),
+            "บริการที่คาดการณ์ (FS)": service_matching.format_combo_text(fs_status, fs_combos, fs_diff),
             "สถานะ": overall_status,
             "_pp_status": pp_status,
-            "_pp_combo": pp_combos[0] if pp_status == "🟢 คาดการณ์" else [],
+            "_pp_combo": pp_combos[0] if pp_status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง") else [],
+            "_pp_diff": pp_diff,
             "_fs_status": fs_status,
-            "_fs_combo": fs_combos[0] if fs_status == "🟢 คาดการณ์" else [],
+            "_fs_combo": fs_combos[0] if fs_status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง") else [],
+            "_fs_diff": fs_diff,
         })
     return pd.DataFrame(rows)
 
 
 def summarize_item_counts(predictions: pd.DataFrame) -> pd.DataFrame:
-    """Step 4: count confident (🟢) item hits across the facility; ambiguous/
-    unmatched amounts are kept visible as their own catch-all rows rather than
-    silently dropped or guessed into a specific item."""
+    """Step 4: count item hits across the facility. Confident (🟢) and
+    closest-match (🟠) hits are both attributed to their matched item, since
+    the goal is to match amounts as closely as possible; truly ambiguous (🟡)
+    and unmatched (🔴) amounts are kept visible as their own catch-all rows
+    rather than silently dropped or guessed into a specific item."""
     if predictions.empty:
         return pd.DataFrame(columns=COUNT_COLUMNS)
 
     counts: dict[str, int] = {name: 0 for name in ITEM_NAMES}
     unclear = 0
     notfound = 0
+    approx_count = 0
+    approx_diff_total = 0.0
     for rec in predictions.to_dict(orient="records"):
-        for status_key, combo_key in (("_pp_status", "_pp_combo"), ("_fs_status", "_fs_combo")):
+        for status_key, combo_key, diff_key in (
+            ("_pp_status", "_pp_combo", "_pp_diff"),
+            ("_fs_status", "_fs_combo", "_fs_diff"),
+        ):
             status = rec[status_key]
-            if status == "🟢 คาดการณ์":
+            if status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง"):
                 for name in rec[combo_key]:
                     counts[name] = counts.get(name, 0) + 1
+                if status == "🟠 ใกล้เคียง":
+                    approx_count += 1
+                    approx_diff_total += rec[diff_key]
             elif status == "🟡 ไม่แน่ชัด":
                 unclear += 1
             elif status == "🔴 ไม่พบ":
                 notfound += 1
 
     rows = [{"รายการบริการ": name, "จำนวนครั้ง": count} for name, count in counts.items() if count > 0]
+    if approx_count:
+        rows.append({
+            "รายการบริการ": f"🟠 นับรวมข้างต้นแล้ว {approx_count} รายการเป็นการจับคู่แบบใกล้เคียง (ส่วนต่างรวม {approx_diff_total:,.2f} บาท)",
+            "จำนวนครั้ง": approx_count,
+        })
     if unclear:
         rows.append({"รายการบริการ": "🟡 ยังไม่แน่ชัด (ต้องตรวจสอบ)", "จำนวนครั้ง": unclear})
     if notfound:

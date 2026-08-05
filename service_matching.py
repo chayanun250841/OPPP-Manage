@@ -136,34 +136,76 @@ def match_combo(amount: float, max_items: int = _MAX_COMBO_ITEMS) -> list[list[s
     return results
 
 
-def resolve_combo(amount: float) -> tuple[str, list[list[str]]]:
-    """Return (status, combos) for one amount.
-    - "-": amount is zero/blank, nothing to predict
-    - "🔴 ไม่พบ": no bundle of known rates sums to this amount, combos = []
-    - "🟢 คาดการณ์": exactly one bundle matches, combos = [that bundle]
-    - "🟡 ไม่แน่ชัด": several bundles match, combos = all of them (capped)
+def _closest_combo(target: float, max_items: int = _MAX_COMBO_ITEMS) -> tuple[float, list[float]] | None:
+    """Find the bundle of known rates (repetition allowed, up to `max_items`)
+    whose sum is closest to `target`, even if not exact. Prefers the smaller
+    absolute difference; ties broken by fewest items. Exhaustive but cheap --
+    the matchable set is small (single digits) by design."""
+    rates = sorted(RATE_INDEX.keys())
+    if not rates:
+        return None
+    best: tuple[float, int, list[float]] | None = None
+
+    for depth in range(1, max_items + 1):
+        def search(start_idx: int, path: list[float]) -> None:
+            nonlocal best
+            if len(path) == depth:
+                total = sum(path)
+                diff = abs(total - target)
+                if best is None or (diff, depth) < (best[0], best[1]):
+                    best = (diff, depth, list(path))
+                return
+            for idx in range(start_idx, len(rates)):
+                path.append(rates[idx])
+                search(idx, path)
+                path.pop()
+
+        search(0, [])
+
+    if best is None:
+        return None
+    diff, _depth, combo = best
+    return diff, combo
+
+
+def resolve_combo(amount: float) -> tuple[str, list[list[str]], float]:
+    """Return (status, combos, diff) for one amount.
+    - "-": amount is zero/blank, nothing to predict; combos=[], diff=0
+    - "🟢 คาดการณ์": exactly one bundle matches exactly, combos=[that bundle], diff=0
+    - "🟡 ไม่แน่ชัด": several bundles match exactly, combos=all of them (capped), diff=0
+    - "🟠 ใกล้เคียง": no exact bundle, but the closest bundle is returned with
+      its baht difference so a human can judge whether it's a real match
+    - "🔴 ไม่พบ": no bundle at all could be formed (empty rate table)
     """
     if amount is None or amount <= 0:
-        return "-", []
+        return "-", [], 0.0
     combos = match_combo(amount)
-    if not combos:
-        return "🔴 ไม่พบ", []
-    if len(combos) == 1:
-        return "🟢 คาดการณ์", combos
-    return "🟡 ไม่แน่ชัด", combos
+    if combos:
+        if len(combos) == 1:
+            return "🟢 คาดการณ์", combos, 0.0
+        return "🟡 ไม่แน่ชัด", combos, 0.0
+
+    closest = _closest_combo(amount)
+    if closest is None:
+        return "🔴 ไม่พบ", [], 0.0
+    diff, rate_combo = closest
+    name_combos = _expand_names(rate_combo)
+    return "🟠 ใกล้เคียง", name_combos[:1], round(diff, 2)
 
 
-def format_combo_text(status: str, combos: list[list[str]]) -> str:
+def format_combo_text(status: str, combos: list[list[str]], diff: float = 0.0) -> str:
     if status == "-":
         return "-"
     if status == "🔴 ไม่พบ":
         return "ไม่พบชุดบริการที่รวมแล้วตรงยอดนี้"
     if status == "🟢 คาดการณ์":
         return " + ".join(combos[0])
+    if status == "🟠 ใกล้เคียง":
+        return f"{' + '.join(combos[0])} (ต่างจากยอดจริง {diff:,.2f} บาท)"
     return "อาจเป็น: " + " | ".join(" + ".join(combo) for combo in combos)
 
 
 def predict_combo_label(amount: float) -> tuple[str, str]:
     """Convenience wrapper: (status, formatted label) for one amount."""
-    status, combos = resolve_combo(amount)
-    return status, format_combo_text(status, combos)
+    status, combos, diff = resolve_combo(amount)
+    return status, format_combo_text(status, combos, diff)
