@@ -1,0 +1,29 @@
+{
+  "_source": "รายการเบิกจ่าย_รพสต_15รายการ_แยกสปสชและจังหวัด.xlsx (ปีงบประมาณ 2569)",
+  "_note": "อัตรา 'rate' คืออัตราที่ รพ.สต. ได้รับจริงตามข้อตกลงจังหวัด ใช้จับคู่กับยอด PP/FS ที่บันทึกจริง ไม่ใช่อัตราเต็ม สปสช. รายการที่จังหวัดกำหนดจ่าย 0 บาท หรือจ่ายเป็นสัดส่วน/ตามพื้นที่ (ไม่ใช่อัตราคงที่) จะไม่ใช้จับคู่อัตโนมัติ (matchable: false)",
+  "items": [
+    {"code": "1", "name": "ตรวจปัสสาวะทดสอบการตั้งครรภ์", "rate": 37.5, "rate_full": 75, "matchable": true},
+    {"code": "2a", "name": "ฝากครรภ์: ดูแล ANC", "rate": 360, "rate_full": 360, "matchable": true},
+    {"code": "2b", "name": "ตรวจช่องปากและขจัดความสะอาดฟัน (ANC)", "rate": 500, "rate_full": 500, "matchable": true},
+    {"code": "3a", "name": "ตรวจหลังคลอด", "rate": 150, "rate_full": 150, "matchable": true},
+    {"code": "3b", "name": "ยาเสริมไอโอดีน ธาตุเหล็ก โฟลิก (หลังคลอด)", "rate": 0, "rate_full": 135, "matchable": false, "note": "จังหวัดกำหนด Triferdine = 0 บาท"},
+    {"code": "4a", "name": "คัดกรองมะเร็งปากมดลูก: Pap smear", "rate": 150, "rate_full": 250, "matchable": true},
+    {"code": "4b", "name": "เก็บตัวอย่าง HPV DNA", "rate": 50, "rate_full": 50, "matchable": true},
+    {"code": "5", "name": "FIT test (คัดกรองมะเร็งลำไส้ใหญ่)", "rate": 30, "rate_full": 60, "matchable": true},
+    {"code": "6", "name": "เคลือบฟลูออไรด์เข้มข้นเฉพาะที่ (กลุ่มเสี่ยง)", "rate": 50, "rate_full": 100, "matchable": true},
+    {"code": "7", "name": "เจาะเลือดตรวจ CBC", "rate": 60, "rate_full": 65, "matchable": true},
+    {"code": "8", "name": "ยาเม็ดเสริมธาตุเหล็กและกรดโฟลิก พร้อมคำแนะนำ/ติดตาม", "rate": 35, "rate_full": 80, "matchable": true},
+    {"code": "9a", "name": "วางแผนครอบครัว: ยาเม็ดคุมกำเนิดรวม", "rate": 10, "rate_full": 40, "matchable": true},
+    {"code": "9b", "name": "วางแผนครอบครัว: ยาเม็ด LYNESTRENOL", "rate": 0, "rate_full": 80, "matchable": false},
+    {"code": "9c", "name": "วางแผนครอบครัว: ยาคุมฉุกเฉิน", "rate": 0, "rate_full": 50, "matchable": false},
+    {"code": "9d", "name": "วางแผนครอบครัว: ถุงยางอนามัย", "rate": 10, "rate_full": 10, "matchable": true},
+    {"code": "9e", "name": "วางแผนครอบครัว: ยาฉีดคุมกำเนิด", "rate": 30, "rate_full": 60, "matchable": true},
+    {"code": "10a", "name": "ประเมินปัจจัยเสี่ยง: FPG", "rate": 40, "rate_full": 40, "matchable": true},
+    {"code": "10b", "name": "ประเมินปัจจัยเสี่ยง: Total cholesterol และ HDL", "rate": 60, "rate_full": 160, "matchable": true},
+    {"code": "11", "name": "ให้วัคซีนป้องกันโรค (EPI, dT, ไข้หวัดใหญ่, aP ฯลฯ)", "rate": 20, "rate_full": 20, "matchable": true},
+    {"code": "12", "name": "คัดกรองวัณโรคด้วย Chest X-ray", "rate": 100, "rate_full": 100, "matchable": true},
+    {"code": "13", "name": "ตรวจไวรัสตับอักเสบ บี และ ซี", "rate": 20, "rate_full": 50, "matchable": true, "note": "จังหวัดกำหนด 20 บาท แต่ยังไม่ยืนยันว่าต่อรายการหรือชุดบริการ — ควรตรวจสอบก่อนยืนยัน"},
+    {"code": "14", "name": "เก็บสิ่งส่งตรวจทางห้องปฏิบัติการ", "rate": null, "rate_full": 80, "matchable": false, "note": "จ่ายตามสัดส่วน CUP (เมือง รพ.80%:รพ.สต.20%, หล่มเก่า รพ.40%:รพ.สต.60%) ไม่ใช่อัตราคงที่"},
+    {"code": "15", "name": "เจาะเลือดตรวจ LAB (HbA1c, Creatinine, Potassium)", "rate": 60, "rate_full": 60, "matchable": true}
+  ]
+}

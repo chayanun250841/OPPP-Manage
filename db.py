@@ -213,6 +213,30 @@ def get_summary_by_hcode() -> pd.DataFrame:
         return pd.read_sql(query, conn)
 
 
+def get_records_for_hcode(hcode: str) -> pd.DataFrame:
+    """Amounts only (no PID/name) for one facility -- safe for the public dashboard."""
+    query = """
+        SELECT r.record_code, r.pp, r.fs
+        FROM records r
+        JOIN upload_batches b ON b.batch_id = r.batch_id
+        WHERE b.status = 'active' AND r.hcode = %s
+    """
+    with get_connection() as conn:
+        return pd.read_sql(query, conn, params=(hcode,))
+
+
+def get_allocations_for_hcode(hcode: str) -> pd.DataFrame:
+    query = """
+        SELECT a.record_code, a.money_type, a.service, a.amount
+        FROM allocations a
+        JOIN records r ON r.record_code = a.record_code
+        JOIN upload_batches b ON b.batch_id = r.batch_id
+        WHERE b.status = 'active' AND r.hcode = %s
+    """
+    with get_connection() as conn:
+        return pd.read_sql(query, conn, params=(hcode,))
+
+
 def get_people_summary() -> pd.DataFrame:
     query = """
         SELECT

@@ -7,12 +7,14 @@ import json
 import os
 import re
 import tempfile
+from collections import defaultdict
 from datetime import datetime
 
 import gradio as gr
 import pandas as pd
 
 import db
+import service_matching
 
 ADMIN_USERNAME = os.environ.get("OPPP_ADMIN_USERNAME", "").strip()
 ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().lower()
@@ -406,6 +408,82 @@ def refresh_dashboard():
 
 
 # ---------------------------------------------------------------------------
+# Facility drill-down (public, no login required -- amounts/services only,
+# never names/PID)
+# ---------------------------------------------------------------------------
+
+BREAKDOWN_COLUMNS = ["รายการบริการ", "จำนวนครั้ง", "ยอดรวม (บาท)", "สถานะ"]
+HCODE_PREFIX_RE = re.compile(r"^(\d{5})")
+
+
+def build_service_breakdown(hcode: str) -> pd.DataFrame:
+    empty = pd.DataFrame(columns=BREAKDOWN_COLUMNS)
+    try:
+        records = db.get_records_for_hcode(hcode)
+        allocations = db.get_allocations_for_hcode(hcode)
+    except Exception:  # noqa: BLE001
+        return empty
+    if records.empty:
+        return empty
+
+    allocated_by_record: dict[tuple[str, str], list[tuple[str, float]]] = defaultdict(list)
+    for row in allocations.itertuples():
+        allocated_by_record[(row.record_code, row.money_type)].append((row.service, float(row.amount)))
+
+    buckets: dict[tuple[str, str], dict[str, float]] = defaultdict(lambda: {"count": 0, "amount": 0.0})
+
+    def add(label: str, status: str, amount: float) -> None:
+        entry = buckets[(label, status)]
+        entry["count"] += 1
+        entry["amount"] += amount
+
+    for row in records.itertuples():
+        for money_type, total in (("PP", float(row.pp)), ("FS", float(row.fs))):
+            if total <= 0:
+                continue
+            allocated = allocated_by_record.get((row.record_code, money_type), [])
+            for service, amount in allocated:
+                add(service, "✅ ยืนยันแล้ว", amount)
+
+            remaining = round(total - sum(amount for _, amount in allocated), 2)
+            if remaining <= 0.01:
+                continue
+            candidates = service_matching.match_candidates(remaining)
+            if len(candidates) == 1:
+                add(candidates[0], "🟢 คาดการณ์", remaining)
+            elif len(candidates) > 1:
+                add("อาจเป็น: " + " / ".join(candidates), "🟡 ไม่แน่ชัด", remaining)
+            else:
+                add("ไม่พบรายการที่ตรงกัน", "🔴 ไม่ระบุ", remaining)
+
+    if not buckets:
+        return empty
+
+    rows = [
+        {"รายการบริการ": label, "จำนวนครั้ง": data["count"], "ยอดรวม (บาท)": data["amount"], "สถานะ": status}
+        for (label, status), data in buckets.items()
+    ]
+    breakdown = pd.DataFrame(rows).sort_values("ยอดรวม (บาท)", ascending=False).reset_index(drop=True)
+    breakdown["จำนวนครั้ง"] = breakdown["จำนวนครั้ง"].map(lambda v: f"{int(v):,}")
+    breakdown["ยอดรวม (บาท)"] = breakdown["ยอดรวม (บาท)"].map(lambda v: f"{float(v):,.2f}")
+    return breakdown[BREAKDOWN_COLUMNS]
+
+
+def on_select_facility(evt: gr.SelectData):
+    row = evt.row_value
+    if not row:
+        return "คลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น", pd.DataFrame(columns=BREAKDOWN_COLUMNS)
+
+    hcode_display = str(row[0])
+    match = HCODE_PREFIX_RE.match(hcode_display)
+    if not match:
+        return "ไม่พบรหัสหน่วยบริการในแถวที่เลือก", pd.DataFrame(columns=BREAKDOWN_COLUMNS)
+
+    label = f"### 🔍 รายละเอียดบริการ: {hcode_display}"
+    return label, build_service_breakdown(match.group(1))
+
+
+# ---------------------------------------------------------------------------
 # Developer console (hidden, admin-only)
 # ---------------------------------------------------------------------------
 
@@ -480,6 +558,12 @@ def restore_selected(choice: str | None):
     return "♻️ กู้คืนไฟล์นี้กลับมาใช้งานแล้ว"
 
 
+def predict_service_label(remaining: float) -> str:
+    if remaining is None or remaining <= 0.01:
+        return "✅ จัดสรรครบแล้ว"
+    return service_matching.predict_label(remaining)
+
+
 def refresh_admin_views(role: str):
     empty_choices = gr.update(choices=[], value=None)
     if role != "admin":
@@ -491,6 +575,8 @@ def refresh_admin_views(role: str):
         ledger = db.get_allocation_ledger()
         choices = db.get_record_choices()
         alloc_summary = db.get_allocation_summary()
+        if not alloc_summary.empty:
+            alloc_summary["คาดการณ์บริการ"] = alloc_summary["คงเหลือ"].map(predict_service_label)
     except Exception:  # noqa: BLE001
         return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame(), empty_choices, pd.DataFrame()
     return people, raw, raw_path, ledger, gr.update(choices=choices, value=None), alloc_summary
@@ -602,7 +688,12 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
     with gr.Group(elem_classes="card"):
         gr.Markdown("### 📊 สรุปยอดชดเชยรายหน่วยบริการ (ทั้งหมด)", elem_classes="section-title")
+        gr.Markdown("คลิกแถวหน่วยบริการเพื่อดูรายละเอียดบริการด้านล่าง", elem_classes="hint-text")
         ranking_table = gr.Dataframe(value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False)
+
+    with gr.Group(elem_classes="card"):
+        breakdown_label = gr.Markdown("### 🔍 รายละเอียดบริการ\nคลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น")
+        breakdown_table = gr.Dataframe(value=pd.DataFrame(columns=BREAKDOWN_COLUMNS), interactive=False)
 
     refresh_timer = gr.Timer(30)
 
@@ -645,7 +736,13 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
 
         with gr.Tab("🧮 จัดสรรบริการ"):
-            gr.Markdown("จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน")
+            gr.Markdown(
+                "จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน "
+                "— คอลัมน์ 'คาดการณ์บริการ' ในตารางยอดคงเหลือด้านล่างช่วยเดารายการจากยอดเงินคงเหลือ "
+                "โดยจับคู่กับอัตราตามข้อตกลงจังหวัด (🟢 ตรงรายการเดียว 🟡 ตรงได้หลายรายการ 🔴 ไม่พบ) "
+                "เป็นเพียงข้อเสนอแนะ ผู้บันทึกต้องตรวจสอบก่อนกรอกจริงเสมอ",
+                elem_classes="hint-text",
+            )
             code_dropdown = gr.Dropdown(label="รหัสรายการ (HCODE | ชื่อ | PP/FS ตั้งต้น)", choices=[])
             with gr.Row():
                 money_type_radio = gr.Radio(["PP", "FS"], label="ประเภทเงิน", value="PP")
@@ -671,6 +768,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     )
     refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs)
+
+    ranking_table.select(on_select_facility, outputs=[breakdown_label, breakdown_table])
 
     login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]).then(
         toggle_admin, inputs=role_state, outputs=admin_section
