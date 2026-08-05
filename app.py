@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import re
 import tempfile
@@ -17,6 +18,7 @@ ADMIN_USERNAME = os.environ.get("OPPP_ADMIN_USERNAME", "").strip()
 ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().lower()
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "ตรากระทรวงสาธารณสุขใหม่.png")
+HCODE_NAMES_PATH = os.path.join(os.path.dirname(__file__), "assets", "hcode_names.json")
 
 
 def load_logo_data_uri(path: str) -> str:
@@ -26,6 +28,23 @@ def load_logo_data_uri(path: str) -> str:
         return f"data:image/png;base64,{encoded}"
     except OSError:
         return ""
+
+
+def load_hcode_names(path: str) -> dict[str, str]:
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+HCODE_NAMES = load_hcode_names(HCODE_NAMES_PATH)
+
+
+def hcode_label(code: object) -> str:
+    code_text = str(code).strip()
+    name = HCODE_NAMES.get(code_text)
+    return f"{code_text} {name}" if name else code_text
 
 
 LOGO_DATA_URI = load_logo_data_uri(LOGO_PATH)
@@ -344,6 +363,17 @@ def toggle_admin(role: str):
 RANKING_COLUMNS = ["HCODE", "รายการ", "PP", "FS", "ยอดรวม"]
 
 
+def format_ranking_table(ranking: pd.DataFrame) -> pd.DataFrame:
+    if ranking.empty:
+        return ranking
+    display = ranking.copy()
+    display["HCODE"] = display["HCODE"].map(hcode_label)
+    display["รายการ"] = display["รายการ"].map(lambda v: f"{int(v):,}")
+    for col in ("PP", "FS", "ยอดรวม"):
+        display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
+    return display
+
+
 def refresh_dashboard():
     try:
         totals = db.get_overall_totals()
@@ -370,7 +400,7 @@ def refresh_dashboard():
         f"{int(totals.get('hcode_count') or 0):,} แห่ง",
         str(totals.get("latest_period") or "-"),
         top10,
-        ranking,
+        format_ranking_table(ranking),
         updated,
     )
 
