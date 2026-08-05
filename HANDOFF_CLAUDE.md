@@ -95,6 +95,9 @@ session อย่างเดียวไม่พอโดยตั้งใจ
 - **ไฟล์ที่ให้ดาวน์โหลดต้องอยู่ใน `EXPORT_DIR`** ซึ่งส่งเข้า `launch(allowed_paths=[...])` — Gradio 5+ ตอบ `403 File not allowed` สำหรับไฟล์นอกรายการนี้ นี่คือสาเหตุที่ปุ่ม Export เดิมกดแล้วไม่มีอะไรเกิดขึ้น (เขียนไฟล์ลง `tempfile.gettempdir()` ตรงๆ)
 - **`gr.Textbox` เรนเดอร์เป็น `<textarea>` โดยดีฟอลต์** ซึ่งกด Enter แล้วขึ้นบรรทัดใหม่ ไม่ยิง `.submit()` ถ้าต้องการให้กด Enter ส่งฟอร์มได้ ต้องใส่ `lines=1, max_lines=1` ให้เรนเดอร์เป็น `<input>`
 - **Gradio ครอบลูกของ `gr.Group` ด้วย `div.styler`** ที่เป็น flex item หดตามเนื้อหา ทำให้ panel ใน modal เหลือ ~286px จึงต้องมี CSS `.oppp-modal .styler { width: 100% }` และจัดกึ่งกลาง panel ด้วย `margin: 0 auto` (ใช้ `justify-content` ไม่ได้เพราะ Gradio วางเป็น column)
+- **ห้ามขึ้นต้น selector ของ custom CSS ด้วย `.gradio-container`** — Gradio เติม prefix `.gradio-container.gradio-container-<version> .contain ` ให้เองทุก rule ถ้าเราเติมเอง selector จะกลายเป็น `... .contain .gradio-container ...` ซึ่งไม่มีวันตรงกับอะไร แล้ว copy ที่ไม่มี prefix ก็จะแพ้ rule ของ Gradio ที่ได้ prefix ไป (specificity สูงกว่า) อาการคือเขียน CSS ถูกทุกอย่างแต่ไม่มีผล — ให้เขียนเป็น `.tab-container button {...}` ไม่ใช่ `.gradio-container .tab-container button {...}`
+- **ตัวแปรธีมต้องประกาศแบบ element-wide** (`html.oppp-light, html.oppp-light *`) ไม่ใช่พึ่ง inheritance เพราะ Gradio ประกาศทับที่ `main.contain` กลางทาง ทำให้ธีมสว่างหายไปตั้งแต่จุดนั้นลงไป และ class ต้องอยู่ที่ `<html>` ไม่ใช่ `.gradio-container` เพื่อให้ครอบ `<body>` ด้วย
+- **`gr.Dataframe` ทำหัวตารางแบบรวมช่อง (colspan) ไม่ได้** ตารางสรุปทุกหน่วยบริการจึงเรนเดอร์เป็น HTML เองใน `service_analysis.render_all_facilities_html()` และเก็บ DataFrame ดิบไว้ใน `gr.State` เพื่อให้ปุ่ม Export ยังมีข้อมูลจริงไปเขียนไฟล์
 - **รันในเครื่องไม่ได้ถ้าไม่มีเน็ต** — `gr.themes.GoogleFont("Sarabun")` ดึงฟอนต์ตอน `launch()` ถ้าเน็ตถูกบล็อกจะค้างเงียบๆ ไม่ error ให้สลับเป็นธีมธรรมดาเวลาทดสอบ local
 
 ## โครงสร้างหน้าเว็บใหม่

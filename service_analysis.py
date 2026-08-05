@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape
 
 import pandas as pd
 
@@ -230,6 +231,13 @@ def analyze_hcode(hcode: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
 
 TOTAL_ROW_LABEL = "รวมทั้งหมด"
 
+# Every service contributes the same pair of sub-columns, so the pivot reads as
+# one grouped header ("service" spanning "จำนวนครั้ง" + "ยอดชดเชย") rather than a
+# long run of differently-worded labels. Column keys join the two with " | ".
+COUNT_SUB = "จำนวนครั้ง"
+AMOUNT_SUB = "ยอดชดเชย"
+LABEL_COLUMNS = ("HCODE", "ชื่อหน่วยบริการ")
+
 
 def item_header(item: dict) -> str:
     """Column label for the pivot. Uses the item's short name -- a bare code
@@ -276,14 +284,14 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
             claim_amount = count * item["rate_claim"]
             share_rate = item.get("rate_facility_share")
             share_amount = count * share_rate if share_rate is not None else 0.0
-            row[f"{label} (ครั้ง)"] = count
-            row[f"{label} (บาท)"] = claim_amount
+            row[f"{label} | {COUNT_SUB}"] = count
+            row[f"{label} | {AMOUNT_SUB}"] = claim_amount
             matched_claim_total += claim_amount
             matched_share_total += share_amount
 
-        row["ยอดที่ยังไม่จัดประเภท (บาท)"] = round(facility_total - matched_claim_total, 2)
-        row["รวมจาก สปสช. (บาท)"] = round(facility_total, 2)
-        row["รวมจัดสรรตามมติจังหวัด (บาท)"] = round(matched_share_total, 2)
+        row[f"ยังไม่จัดประเภท | {AMOUNT_SUB}"] = round(facility_total - matched_claim_total, 2)
+        row[f"รวมจาก สปสช. | {AMOUNT_SUB}"] = round(facility_total, 2)
+        row[f"จัดสรรตามมติจังหวัด | {AMOUNT_SUB}"] = round(matched_share_total, 2)
         rows.append(row)
 
     pivot = pd.DataFrame(rows)
@@ -296,14 +304,71 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
 
 
 def format_all_facilities_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
+    """Flatten the grouped columns for the Excel export, where a spreadsheet
+    reader wants one self-describing label per column."""
     if pivot.empty:
         return pivot
     display = pivot.copy()
     for col in display.columns:
-        if col in ("HCODE", "ชื่อหน่วยบริการ"):
+        if col in LABEL_COLUMNS:
             continue
-        if col.endswith("(ครั้ง)"):
+        if col.endswith(COUNT_SUB):
             display[col] = display[col].map(lambda v: f"{int(v):,}")
         else:
             display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
+    display.columns = [c.replace(" | ", " - ") for c in display.columns]
     return display
+
+
+def _split_column(column: str) -> tuple[str, str]:
+    group, _, sub = column.partition(" | ")
+    return group, sub
+
+
+def render_all_facilities_html(pivot: pd.DataFrame) -> str:
+    """Render the pivot with a two-row header: each service name spans its
+    จำนวนครั้ง and ยอดชดเชย columns.
+
+    gr.Dataframe cannot merge header cells, so this table is emitted as HTML.
+    The numbers are the same ones format_all_facilities_pivot() exports.
+    """
+    if pivot.empty:
+        return "<p class='hint-text'>ยังไม่มีข้อมูล — กดปุ่มคำนวณหลังอัปโหลดไฟล์แล้ว</p>"
+
+    value_columns = [c for c in pivot.columns if c not in LABEL_COLUMNS]
+
+    # Consecutive columns sharing a group become one spanning header cell.
+    groups: list[tuple[str, list[str]]] = []
+    for column in value_columns:
+        group, sub = _split_column(column)
+        if groups and groups[-1][0] == group:
+            groups[-1][1].append(sub)
+        else:
+            groups.append((group, [sub]))
+
+    head = ["<thead><tr>"]
+    for label in LABEL_COLUMNS:
+        head.append(f'<th class="lbl" rowspan="2">{escape(label)}</th>')
+    for group, subs in groups:
+        head.append(f'<th class="grp" colspan="{len(subs)}">{escape(group)}</th>')
+    head.append("</tr><tr>")
+    for _group, subs in groups:
+        for sub in subs:
+            head.append(f'<th class="sub">{escape(sub)}</th>')
+    head.append("</tr></thead>")
+
+    body = ["<tbody>"]
+    for record in pivot.to_dict(orient="records"):
+        is_total = str(record.get("HCODE", "")) == TOTAL_ROW_LABEL
+        body.append(f'<tr class="{"total" if is_total else ""}">')
+        for label in LABEL_COLUMNS:
+            body.append(f'<td class="lbl">{escape(str(record.get(label, "")))}</td>')
+        for column in value_columns:
+            value = record.get(column, 0)
+            _group, sub = _split_column(column)
+            text = f"{int(value):,}" if sub == COUNT_SUB else f"{float(value):,.2f}"
+            body.append(f"<td>{text}</td>")
+        body.append("</tr>")
+    body.append("</tbody>")
+
+    return f'<div class="pivot-scroll"><table class="pivot">{"".join(head)}{"".join(body)}</table></div>'

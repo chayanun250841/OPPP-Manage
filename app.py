@@ -78,7 +78,11 @@ THEME = gr.themes.Soft(
 CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-:root, .dark, .gradio-container.dark {
+/* The theme variables are applied to every element, not just the root.
+   Gradio re-declares them partway down the tree (main.contain resolved back
+   to the dark palette), so plain inheritance from .gradio-container silently
+   lost the light theme below that point. */
+:root, .dark, .gradio-container, .gradio-container * {
     --oppp-bg: #06080b;
     --oppp-panel: #0a1017;
     --oppp-panel-alt: #0d1712;
@@ -93,24 +97,25 @@ CUSTOM_CSS = """
     --oppp-overlay: rgba(2, 5, 4, 0.78);
 }
 
-/* Light theme -- toggled by the ☀/🌙 button next to Login, which flips this
-   class on the container and remembers the choice in localStorage. */
-.gradio-container.oppp-light, .gradio-container.oppp-light.dark {
-    --oppp-bg: #eef2ef;
+/* Light theme -- toggled by the ☀/🌙 button in the header, which flips this
+   class on the container and remembers the choice in localStorage. Same
+   element-wide application as the dark defaults above, one specificity step
+   higher so it wins everywhere. */
+html.oppp-light, html.oppp-light * {
+    --oppp-bg: #f4f7f5;
     --oppp-panel: #ffffff;
-    --oppp-panel-alt: #e6efe9;
+    --oppp-panel-alt: #eef4f0;
     --oppp-input: #ffffff;
-    --oppp-border: #c3d4c8;
-    --oppp-text: #17281f;
-    --oppp-text-dim: #4d6b58;
+    --oppp-border: #d3e0d7;
+    --oppp-text: #1b2b22;
+    --oppp-text-dim: #5b7566;
     --oppp-accent: #0f7a42;
     --oppp-accent-dark: #0a5c31;
     --oppp-accent-text: #ffffff;
-    --oppp-shadow: 0 1px 3px rgba(20, 40, 30, 0.14), 0 1px 2px rgba(20, 40, 30, 0.10);
-    --oppp-overlay: rgba(30, 45, 36, 0.55);
+    --oppp-shadow: 0 1px 2px rgba(23, 43, 32, 0.06), 0 4px 16px rgba(23, 43, 32, 0.07);
+    --oppp-overlay: rgba(28, 42, 34, 0.42);
     color-scheme: light !important;
 }
-.gradio-container.oppp-light, .gradio-container.oppp-light.dark { color-scheme: light !important; }
 
 /* Force the dark terminal look regardless of the visitor's OS/browser
    color-scheme preference -- Gradio's built-in skin otherwise overrides
@@ -123,7 +128,20 @@ CUSTOM_CSS = """
     color: var(--oppp-text) !important;
     color-scheme: dark !important;
     font-size: 16px !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 18px 26px 28px !important;
 }
+html.oppp-light .gradio-container { color-scheme: light !important; }
+/* Gradio paints its own background on these wrappers; without this the page
+   keeps a dark frame around a light body (and vice versa). The inner wrappers
+   go transparent rather than re-resolving the variable -- Gradio re-declares
+   the palette on main.contain, so a var() there would read the wrong theme. */
+body, gradio-app { background: var(--oppp-bg) !important; color: var(--oppp-text) !important; }
+.gradio-container .main,
+.gradio-container .wrap,
+.gradio-container main.contain,
+main.contain { background: transparent !important; }
 /* Readable body copy -- the old 0.8rem sizing was too small to scan. */
 .gradio-container p,
 .gradio-container li,
@@ -149,20 +167,39 @@ CUSTOM_CSS = """
     padding: 2px 8px !important;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Header: brand on the left, actions on the right, one bar ------ */
+.oppp-header-row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 18px !important;
+    background: var(--oppp-panel) !important;
+    padding: 18px 24px !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-radius: 14px !important;
+    box-shadow: var(--oppp-shadow);
+    margin-bottom: 20px !important;
+    position: relative;
+    overflow: hidden;
+}
+/* A thin accent bar along the top edge, instead of the old left border */
+.oppp-header-row::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--oppp-accent), transparent 75%);
+}
+.oppp-header-row > .html-container,
+.oppp-header-row > div:first-child { flex: 1 1 auto !important; min-width: 0 !important; }
 .oppp-header {
     position: relative;
     display: flex;
     align-items: center;
     gap: 18px;
-    background: var(--oppp-panel);
     color: var(--oppp-text);
-    padding: 24px 30px;
-    border-radius: 6px;
-    margin-bottom: 22px;
-    border: 1px solid var(--oppp-border);
-    border-left: 4px solid var(--oppp-accent);
-    box-shadow: var(--oppp-shadow);
+    background: transparent;
 }
 /* Coin: a slow 3D spin about the vertical axis. The wrapper owns the
    perspective so the rotation reads as depth rather than a flat squash. */
@@ -188,11 +225,20 @@ CUSTOM_CSS = """
 @media (prefers-reduced-motion: reduce) {
     .oppp-header .icon img { animation: none; }
 }
+.oppp-header .titles { min-width: 0; }
 .oppp-header h1 {
-    margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: 0.2px;
+    margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: 0.2px;
     color: var(--oppp-accent);
+    line-height: 1.25;
 }
-.oppp-header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.95rem; color: var(--oppp-text-dim); }
+.oppp-header p {
+    margin: 5px 0 0; opacity: 0.9; font-size: 0.92rem; color: var(--oppp-text-dim);
+    line-height: 1.45;
+}
+@media (max-width: 900px) {
+    .oppp-header-row { flex-wrap: wrap !important; }
+    .oppp-header p { display: none; }
+}
 .oppp-header .badge {
     margin-left: auto;
     text-align: right;
@@ -219,7 +265,7 @@ CUSTOM_CSS = """
 .card {
     background: var(--oppp-panel) !important;
     border: 1px solid var(--oppp-border) !important;
-    border-radius: 8px !important;
+    border-radius: 14px !important;
     padding: 20px 22px !important;
     box-shadow: var(--oppp-shadow);
     margin-bottom: 18px !important;
@@ -230,13 +276,15 @@ CUSTOM_CSS = """
 .kpi-row { gap: 16px !important; margin-bottom: 16px !important; }
 .kpi-card {
     position: relative;
-    border-radius: 8px !important;
-    padding: 8px 16px !important;
+    border-radius: 14px !important;
+    padding: 14px 18px !important;
     background: var(--oppp-panel) !important;
     border: 1px solid var(--oppp-border) !important;
     border-left: 3px solid var(--oppp-accent) !important;
     box-shadow: var(--oppp-shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
+.kpi-card:hover { transform: translateY(-2px); }
 .kpi-card.gold { border-left: 3px solid var(--oppp-text-dim) !important; }
 .kpi-card .wrap, .kpi-card .block, .kpi-card .form {
     background: transparent !important;
@@ -257,16 +305,37 @@ CUSTOM_CSS = """
     -webkit-text-fill-color: var(--oppp-accent) !important;
 }
 
-/* ---------- Top bar (theme toggle + login, to the right of the logo) ------ */
-.topbar { justify-content: flex-end !important; gap: 10px !important; margin-bottom: 10px !important; }
-.topbar button {
-    min-width: 0 !important;
-    padding: 8px 16px !important;
-    border-radius: 6px !important;
+/* ---------- Header actions (theme toggle, login, console, logout) -------- */
+.topbar {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    background: transparent !important;
+    border: none !important;
+    margin: 0 !important;
 }
-.icon-btn button, button.icon-btn {
-    font-size: 1.15rem !important;
-    padding: 8px 12px !important;
+.topbar > * { flex: 0 0 auto !important; width: auto !important; min-width: 0 !important; }
+/* `min-width: 0` on the button itself used to be here -- it let each button
+   collapse to ~26px, stacking its label one character per line. */
+.topbar button {
+    white-space: nowrap !important;
+    width: auto !important;
+    padding: 10px 18px !important;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
+    box-shadow: none !important;
+    transition: transform 0.12s ease, background 0.12s ease;
+}
+.topbar button:hover { transform: translateY(-1px); }
+.topbar .icon-btn button, .topbar button.icon-btn {
+    font-size: 1.2rem !important;
+    padding: 9px 13px !important;
+    line-height: 1 !important;
 }
 
 /* ---------- Modal overlay (login + developer console) ---------- */
@@ -337,6 +406,43 @@ button:not(.primary) {
     color: var(--oppp-text) !important;
     border: 1px solid var(--oppp-border) !important;
 }
+button:not(.primary):hover { border-color: var(--oppp-accent) !important; }
+
+/* ---------- Tabs: pill-style bar under the header ----------
+   Do NOT lead these selectors with `.gradio-container`. Gradio rewrites custom
+   CSS by prefixing `.gradio-container.gradio-container-X .contain `, so a
+   self-prefixed selector becomes `... .contain .gradio-container ...`, which
+   matches nothing -- and the surviving unprefixed copy then loses to Gradio's
+   own prefixed `button:not(.primary)`. Starting from `.tab-container` lets the
+   prefix do its job and outrank it. */
+.tab-container {
+    background: var(--oppp-panel) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-radius: 999px !important;
+    padding: 5px !important;
+    gap: 4px !important;
+    display: inline-flex !important;
+    margin-bottom: 16px !important;
+    box-shadow: var(--oppp-shadow);
+}
+.tab-container.visually-hidden { display: none !important; }
+.tab-container button[aria-selected] {
+    border: none !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    color: var(--oppp-text-dim) !important;
+    padding: 8px 20px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+}
+.tab-container button[aria-selected="true"] {
+    background: var(--oppp-accent) !important;
+    color: var(--oppp-accent-text) !important;
+}
+.tab-container button[aria-selected="false"]:hover {
+    background: var(--oppp-panel-alt) !important;
+    color: var(--oppp-text) !important;
+}
 
 /* ---------- Tables / plots ---------- */
 table, thead, tbody, tr, td, th {
@@ -349,8 +455,7 @@ thead th { color: var(--oppp-accent) !important; }
 /* Do NOT force white-space on cells -- that overrides each Dataframe's own
    `wrap` setting and, combined with narrow auto-sized columns, stacks short
    headers into a single letter per line. Let `wrap` control it. */
-.gradio-container table td,
-.gradio-container table th {
+table td, table th {
     padding: 8px 12px !important;
     font-size: 0.95rem !important;
     line-height: 1.45 !important;
@@ -358,30 +463,51 @@ thead th { color: var(--oppp-accent) !important; }
 /* Headers wrap between words but never inside one. `overflow-wrap: anywhere`
    shredded Thai headers a character per line ("ครั้" / "ง"); a min-width plus
    the table's own horizontal scroll keeps them readable instead. */
-.gradio-container table th {
+table th {
     white-space: normal !important;
     word-break: keep-all !important;
     overflow-wrap: normal !important;
     hyphens: none !important;
-    min-width: 8.5rem !important;
     vertical-align: bottom !important;
     font-weight: 700 !important;
     text-align: center !important;
 }
-.gradio-container table td { white-space: nowrap !important; }
+table td { white-space: nowrap !important; }
 
-/* ---------- Tabs ---------- */
-.gradio-container .tab-nav button {
-    font-size: 1rem !important;
-    padding: 10px 18px !important;
+/* ---------- All-facilities pivot: two-row grouped header ---------- */
+.pivot-scroll { overflow-x: auto; border: 1px solid var(--oppp-border); border-radius: 12px; }
+table.pivot {
+    border-collapse: collapse !important;
+    width: max-content;
+    min-width: 100%;
+    font-size: 0.92rem;
 }
-.gradio-container .tab-nav button.selected {
+table.pivot th, table.pivot td {
+    border: 1px solid var(--oppp-border) !important;
+    padding: 7px 12px !important;
+    white-space: nowrap !important;
+    text-align: right;
+}
+table.pivot thead th {
+    background: var(--oppp-panel-alt) !important;
     color: var(--oppp-accent) !important;
-    border-bottom: 2px solid var(--oppp-accent) !important;
+    text-align: center !important;
+    font-weight: 700 !important;
+    position: sticky;
+    top: 0;
+}
+table.pivot th.grp { border-bottom: 2px solid var(--oppp-accent) !important; }
+table.pivot th.sub { font-weight: 600 !important; font-size: 0.86rem; }
+table.pivot th.lbl, table.pivot td.lbl { text-align: left !important; }
+table.pivot tbody tr:nth-child(even) td { background: var(--oppp-panel-alt) !important; }
+table.pivot tbody tr.total td {
+    font-weight: 700 !important;
+    color: var(--oppp-accent) !important;
+    border-top: 2px solid var(--oppp-accent) !important;
 }
 
 /* ---------- Accordions used to collapse the long tables ---------- */
-.gradio-container .label-wrap span { font-size: 1rem !important; font-weight: 600 !important; }
+.label-wrap span { font-size: 1rem !important; font-weight: 600 !important; }
 """
 
 
@@ -742,14 +868,26 @@ def analyze_facility_ui(hcode_choice: str | None):
 
 
 def build_all_facilities_summary():
+    """Returns (ตาราง HTML, สถานะ, ตารางดิบสำหรับส่งออก).
+
+    The display table is HTML because its header spans two rows -- one service
+    name over its จำนวนครั้ง and ยอดชดเชย columns -- which gr.Dataframe cannot
+    express. The raw frame rides along in a State so the Excel export still has
+    real data to write.
+    """
+    empty = pd.DataFrame()
     try:
         pivot = service_analysis.build_all_facilities_pivot(HCODE_NAMES)
     except Exception as exc:  # noqa: BLE001
-        return pd.DataFrame(), f"⚠️ สรุปไม่สำเร็จ: {exc}"
+        return "", f"⚠️ สรุปไม่สำเร็จ: {exc}", empty
     if pivot.empty:
-        return pd.DataFrame(), "ไม่มีข้อมูล"
+        return service_analysis.render_all_facilities_html(pivot), "ไม่มีข้อมูล", empty
     updated = f"🟢 คำนวณล่าสุด {datetime.now():%d/%m/%Y %H:%M:%S} น."
-    return service_analysis.format_all_facilities_pivot(pivot), updated
+    return (
+        service_analysis.render_all_facilities_html(pivot),
+        updated,
+        service_analysis.format_all_facilities_pivot(pivot),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -954,23 +1092,23 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         if LOGO_DATA_URI
         else "🏛️"
     )
-    gr.HTML(
-        f"""
-        <div class="oppp-header">
-            <div class="icon">{_header_icon}</div>
-            <div>
-                <h1>ระบบติดตามเงินชดเชย OPPP</h1>
-                <p>สรุปยอดชดเชยทั้งสิ้นของรายการที่มีเงิน PP/FS ตามหน่วยบริการ HCODE 5 หลัก — ภาพรวมผลการดำเนินงานสะสม</p>
+    with gr.Row(elem_classes="oppp-header-row"):
+        gr.HTML(
+            f"""
+            <div class="oppp-header">
+                <div class="icon">{_header_icon}</div>
+                <div class="titles">
+                    <h1>ระบบติดตามเงินชดเชย OPPP</h1>
+                    <p>สรุปยอดชดเชยทั้งสิ้นของรายการที่มีเงิน PP/FS ตามหน่วยบริการ HCODE 5 หลัก</p>
+                </div>
             </div>
-        </div>
-        """
-    )
-
-    with gr.Row(elem_classes="topbar"):
-        theme_btn = gr.Button("🌙", elem_classes="icon-btn", scale=0, min_width=60)
-        open_login_btn = gr.Button("🔑 เข้าสู่ระบบ", scale=0, min_width=150)
-        open_admin_btn = gr.Button("🛠️ หน้าผู้ดูแลระบบ", variant="primary", visible=False, scale=0, min_width=190)
-        logout_btn = gr.Button("🚪 ออกจากระบบ", visible=False, scale=0, min_width=150)
+            """
+        )
+        with gr.Row(elem_classes="topbar"):
+            theme_btn = gr.Button("🌙", elem_classes="icon-btn", scale=0, min_width=0)
+            open_login_btn = gr.Button("🔑 เข้าสู่ระบบ", scale=0, min_width=0)
+            open_admin_btn = gr.Button("🛠️ หน้าผู้ดูแลระบบ", variant="primary", visible=False, scale=0, min_width=0)
+            logout_btn = gr.Button("🚪 ออกจากระบบ", visible=False, scale=0, min_width=0)
 
     # --- Login modal ---------------------------------------------------
     with gr.Group(visible=False, elem_classes="oppp-modal") as login_modal:
@@ -1148,10 +1286,9 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             )
             summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
             summary_status = gr.Markdown()
+            all_facilities_data = gr.State(pd.DataFrame())
             with gr.Accordion("📋 ตารางสรุปทุกหน่วยบริการ", open=True):
-                # wrap=True + a wider min_width so headers read as words across
-                # lines instead of one letter per line in this very wide pivot.
-                all_facilities_table = gr.Dataframe(interactive=False, wrap=True, min_width=160)
+                all_facilities_table = gr.HTML()
             with gr.Accordion("📖 คำอธิบายรายการ (ชื่อย่อ → ชื่อเต็มตามประกาศ)", open=False):
                 summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
             summary_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
@@ -1208,15 +1345,17 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
     summary_refresh_btn.click(
         build_all_facilities_summary,
-        outputs=[all_facilities_table, summary_status],
+        outputs=[all_facilities_table, summary_status, all_facilities_data],
     )
 
     # --- Theme toggle: pure client-side so the choice survives reloads ---
+    # The class goes on <html> so it also covers <body> and Gradio's own
+    # wrappers, which sit outside .gradio-container and kept their dark
+    # background when the class lived on the container.
     theme_btn.click(
         None, None, theme_btn,
         js="""() => {
-            const root = document.querySelector('.gradio-container');
-            const light = root.classList.toggle('oppp-light');
+            const light = document.documentElement.classList.toggle('oppp-light');
             localStorage.setItem('oppp-theme', light ? 'light' : 'dark');
             return light ? '☀️' : '🌙';
         }""",
@@ -1224,9 +1363,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     demo.load(
         None, None, theme_btn,
         js="""() => {
-            const root = document.querySelector('.gradio-container');
             const light = localStorage.getItem('oppp-theme') === 'light';
-            root.classList.toggle('oppp-light', light);
+            document.documentElement.classList.toggle('oppp-light', light);
             return light ? '☀️' : '🌙';
         }""",
     )
@@ -1368,7 +1506,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     wire_download(
         summary_excel_btn,
         lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"),
-        all_facilities_table, summary_excel_status,
+        all_facilities_data, summary_excel_status,
     )
     wire_download(
         allocation_excel_btn,
