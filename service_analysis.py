@@ -231,6 +231,13 @@ def analyze_hcode(hcode: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
 TOTAL_ROW_LABEL = "รวมทั้งหมด"
 
 
+def build_item_legend() -> str:
+    """Code -> full name legend, since the pivot table uses short codes as
+    column headers to keep columns readable."""
+    lines = [f"**{item['code']})** {item['name']} ({item['rate_claim']:,.0f} บาท)" for item in MATCHABLE_ITEMS]
+    return " · ".join(lines)
+
+
 def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
     try:
         totals_by_hcode = db.get_summary_by_hcode()
@@ -254,12 +261,13 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
         matched_share_total = 0.0
         for item in MATCHABLE_ITEMS:
             name = item["name"]
+            code = item["code"]
             count = count_by_item.get(name, 0)
             claim_amount = count * item["rate_claim"]
             share_rate = item.get("rate_facility_share")
             share_amount = count * share_rate if share_rate is not None else 0.0
-            row[f"{name} ครั้ง"] = count
-            row[f"{name} บาท"] = claim_amount
+            row[f"{code}) ครั้ง"] = count
+            row[f"{code}) บาท"] = claim_amount
             matched_claim_total += claim_amount
             matched_share_total += share_amount
 

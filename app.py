@@ -258,6 +258,16 @@ table, thead, tbody, tr, td, th {
     border-color: var(--oppp-border) !important;
 }
 thead th { color: var(--oppp-accent) !important; }
+
+/* Compact cells so wide pivot tables (many item columns) stay readable
+   instead of stretching each column to fit the longest header text. */
+.gradio-container table td,
+.gradio-container table th {
+    padding: 4px 8px !important;
+    font-size: 0.82rem !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+}
 """
 
 
@@ -331,6 +341,27 @@ def parse_report(path: str) -> pd.DataFrame:
 def export_csv(frame: pd.DataFrame, name: str) -> str:
     path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.csv")
     frame.to_csv(path, index=False, encoding="utf-8-sig")
+    return path
+
+
+def export_excel(frame: pd.DataFrame | None, name: str):
+    """Excel-download handler for a Dataframe component's current value."""
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return None
+    path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
+    frame.to_excel(path, index=False)
+    return path
+
+
+def export_excel_sheets(name: str, **sheets: pd.DataFrame | None):
+    """Excel-download handler that writes multiple tables as separate sheets."""
+    usable = {label: df for label, df in sheets.items() if isinstance(df, pd.DataFrame) and not df.empty}
+    if not usable:
+        return None
+    path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
+    with pd.ExcelWriter(path) as writer:
+        for label, df in usable.items():
+            df.to_excel(writer, sheet_name=label[:31], index=False)
     return path
 
 
@@ -722,7 +753,9 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     with gr.Group(elem_classes="card"):
         gr.Markdown("### 📊 สรุปยอดชดเชยรายหน่วยบริการ (ทั้งหมด)", elem_classes="section-title")
         gr.Markdown("คลิกแถวหน่วยบริการเพื่อดูรายละเอียดบริการด้านล่าง", elem_classes="hint-text")
-        ranking_table = gr.Dataframe(value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False)
+        ranking_table = gr.Dataframe(value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False, wrap=True)
+        ranking_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+        ranking_excel_file = gr.File(label="ไฟล์ Excel", visible=True)
 
     with gr.Group(elem_classes="card"):
         breakdown_label = gr.Markdown("### 🔍 รายละเอียดบริการ\nคลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น")
@@ -762,16 +795,20 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             batch_status = gr.Markdown()
 
         with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล"):
-            people_table = gr.Dataframe(interactive=False)
+            people_table = gr.Dataframe(interactive=False, wrap=True)
+            people_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+            people_excel_file = gr.File(label="ไฟล์ Excel")
 
         with gr.Tab("🗂️ ข้อมูลต้นทาง"):
-            raw_table = gr.Dataframe(interactive=False)
+            raw_table = gr.Dataframe(interactive=False, wrap=True)
             raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
+            raw_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+            raw_excel_file = gr.File(label="ไฟล์ Excel")
 
         with gr.Tab("📊 วิเคราะห์รายบริการ"):
             gr.Markdown(
                 "เลือกหน่วยบริการเพื่อไล่ดูทีละขั้น: 1) รายชื่อผู้รับบริการ 2) คาดการณ์บริการรายคน "
-                "(รวมหลายรายการเข้าด้วยกันจนตรงยอด) 3) สรุปจำนวนรายการทั้ง 15 รายการของหน่วยนี้ "
+                "(รวมหลายรายการเข้าด้วยกันจนตรงยอด) 3) สรุปจำนวนรายการทั้ง 9 รายการของหน่วยนี้ "
                 "4) เทียบยอดที่สปสช.ชดเชยเต็มอัตรา กับยอดที่ได้รับจัดสรรจริงตามข้อตกลงจังหวัด "
                 "— คาดการณ์แยก PP และ FS ต่างหากจากกัน เพราะรายการอ้างอิงเป็น PP Fee เป็นหลัก",
                 elem_classes="hint-text",
@@ -782,27 +819,34 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             )
 
             gr.Markdown("#### 1️⃣ รายชื่อผู้รับบริการ", elem_classes="section-title")
-            facility_people_table = gr.Dataframe(interactive=False)
+            facility_people_table = gr.Dataframe(interactive=False, wrap=True)
 
             gr.Markdown("#### 2️⃣ คาดการณ์บริการรายรายการ", elem_classes="section-title")
-            facility_prediction_table = gr.Dataframe(interactive=False)
+            facility_prediction_table = gr.Dataframe(interactive=False, wrap=True)
 
-            gr.Markdown("#### 3️⃣ สรุปจำนวนรายการ (15 รายการ)", elem_classes="section-title")
-            facility_count_table = gr.Dataframe(interactive=False)
+            gr.Markdown("#### 3️⃣ สรุปจำนวนรายการ (9 รายการ)", elem_classes="section-title")
+            facility_count_table = gr.Dataframe(interactive=False, wrap=True)
 
             gr.Markdown("#### 4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", elem_classes="section-title")
-            facility_reconcile_table = gr.Dataframe(interactive=False)
+            facility_reconcile_table = gr.Dataframe(interactive=False, wrap=True)
+
+            facility_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (ทุกตารางในหน้านี้)")
+            facility_excel_file = gr.File(label="ไฟล์ Excel")
 
         with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
             gr.Markdown(
                 "ตารางสรุปทุกหน่วยบริการพร้อมกันในหน้าเดียว — แทนที่สเปรดชีตที่เจ้าหน้าที่ต้องนั่งกรอกเอง "
-                "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢) "
-                "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง — กดคำนวณใหม่หลังอัปโหลดข้อมูลเพิ่ม",
+                "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢 หรือ 🟠 ใกล้เคียง) "
+                "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง — กดคำนวณใหม่หลังอัปโหลดข้อมูลเพิ่ม "
+                "หัวคอลัมน์ใช้รหัสย่อ ดูความหมายได้จากคำอธิบายด้านล่าง",
                 elem_classes="hint-text",
             )
             summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
             summary_status = gr.Markdown()
-            all_facilities_table = gr.Dataframe(interactive=False)
+            all_facilities_table = gr.Dataframe(interactive=False, wrap=True)
+            summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
+            summary_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+            summary_excel_file = gr.File(label="ไฟล์ Excel")
 
         with gr.Tab("🧮 จัดสรรบริการ"):
             gr.Markdown(
@@ -822,10 +866,12 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 recorder_box = gr.Textbox(label="ผู้บันทึก")
             add_btn = gr.Button("➕ เพิ่มรายการจัดสรร", variant="primary")
             allocation_status = gr.Markdown(elem_classes="login-status")
-            allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False)
-            remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False)
+            allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False, wrap=True)
+            remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False, wrap=True)
             ledger_export_btn = gr.Button("ดาวน์โหลดสมุดจัดสรร (CSV)")
             ledger_download = gr.File(label="ไฟล์สมุดจัดสรร")
+            allocation_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (สมุดจัดสรร + ยอดคงเหลือ)")
+            allocation_excel_file = gr.File(label="ไฟล์ Excel")
 
     admin_view_outputs = [people_table, raw_table, raw_download, allocation_table, code_dropdown, remaining_table]
 
@@ -892,6 +938,32 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     ).then(refresh_admin_views, inputs=role_state, outputs=admin_view_outputs)
 
     ledger_export_btn.click(export_ledger_csv, outputs=ledger_download)
+
+    ranking_excel_btn.click(
+        lambda df: export_excel(df, "สรุปยอดชดเชยรายหน่วยบริการ"), inputs=ranking_table, outputs=ranking_excel_file
+    )
+    people_excel_btn.click(
+        lambda df: export_excel(df, "ตรวจสอบรายบุคคล"), inputs=people_table, outputs=people_excel_file
+    )
+    raw_excel_btn.click(
+        lambda df: export_excel(df, "ข้อมูลต้นทาง"), inputs=raw_table, outputs=raw_excel_file
+    )
+    facility_excel_btn.click(
+        lambda a, b, c, d: export_excel_sheets(
+            "วิเคราะห์รายบริการ",
+            รายชื่อผู้รับบริการ=a, คาดการณ์บริการ=b, สรุปจำนวนรายการ=c, เปรียบเทียบยอด=d,
+        ),
+        inputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
+        outputs=facility_excel_file,
+    )
+    summary_excel_btn.click(
+        lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"), inputs=all_facilities_table, outputs=summary_excel_file
+    )
+    allocation_excel_btn.click(
+        lambda a, b: export_excel_sheets("จัดสรรบริการ", สมุดจัดสรรบริการ=a, ยอดคงเหลือต่อรายการ=b),
+        inputs=[allocation_table, remaining_table],
+        outputs=allocation_excel_file,
+    )
 
 
 if __name__ == "__main__":
