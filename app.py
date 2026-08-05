@@ -300,7 +300,22 @@ def find_column(header: pd.Series, label: str) -> int:
     return matches[0]
 
 
-def parse_report(path: str) -> pd.DataFrame:
+GRAND_TOTAL_LABEL = "ยอดชดเชยทั้งสิ้น"
+
+
+def parse_report(path: str) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Read one OPPP report into the analysis frame.
+
+    Scope rule (ตาม 'กติกาและสูตรรวม' ของแฟ้มอ้างอิง): เอาเฉพาะแถวที่มีเงินจริงใน
+    PP หรือ FS เท่านั้น แถวที่ชดเชยมาจากกองทุนอื่น (HC, DRUG, AE ฯลฯ) ไม่เกี่ยวกับ
+    การวิเคราะห์ PP/FS จึงถูกตัดทิ้งตั้งแต่ต้นทาง ไม่ให้ไปพองยอดในฐานข้อมูล
+
+    เก็บคอลัมน์สุดท้าย `ยอดชดเชยทั้งสิ้น` ของแถวที่ผ่านเกณฑ์ไว้ด้วย เพราะเป็นตัวเลข
+    เป้าหมายที่ต้องรายงาน ส่วน PP+FS เก็บแยกไว้ใช้จับคู่บริการ (สองค่านี้ไม่เท่ากัน
+    เมื่อแถวเดียวกันมีเงินกองทุนอื่นปนมาด้วย)
+
+    Returns the frame plus a stats dict for the upload log.
+    """
     sheet = pd.read_excel(path, header=None, dtype=object)
     mask = sheet.apply(lambda row: row.map(text_value).eq("HCODE").any(), axis=1)
     matches = mask[mask].index
@@ -311,6 +326,7 @@ def parse_report(path: str) -> pd.DataFrame:
     header = sheet.iloc[header_row].where(sheet.iloc[header_row].notna(), sheet.iloc[header_row - 1])
     columns = {label: find_column(header, label) for label in ["TRAN_ID", "PID", "ชื่อ-นามสกุล", "HCODE", "PP", "FS"]}
     date_col = find_column(header, "วันเข้ารักษา")
+    grand_col = find_column(header, GRAND_TOTAL_LABEL)
     rows = sheet.iloc[header_row + 2 :].copy()
 
     report_name = os.path.basename(path)
@@ -324,9 +340,20 @@ def parse_report(path: str) -> pd.DataFrame:
             "วันเข้ารักษา": pd.to_datetime(rows.iloc[:, date_col], errors="coerce").dt.date.astype("string"),
             "PP": rows.iloc[:, columns["PP"]].map(money_value),
             "FS": rows.iloc[:, columns["FS"]].map(money_value),
+            GRAND_TOTAL_LABEL: rows.iloc[:, grand_col].map(money_value),
         }
     )
     result = result[(result["HCODE"] != "") & (result["HCODE"].str.lower() != "hcode")].copy()
+    stats = {"อ่านได้": len(result)}
+
+    result = result[(result["PP"] > 0) | (result["FS"] > 0)].copy()
+    stats["ไม่มีเงิน PP/FS"] = stats["อ่านได้"] - len(result)
+
+    before_tran = len(result)
+    result = result[result["TRAN_ID"] != ""].copy()
+    result = result.drop_duplicates("TRAN_ID", keep="first")
+    stats["TRAN_ID ซ้ำ/ว่างในไฟล์"] = before_tran - len(result)
+
     result["ไฟล์ต้นทาง"] = report_name
     result["รอบรายงาน"] = report_code.group(1) if report_code else report_name
     result["ยอดรวม"] = result["PP"] + result["FS"]
@@ -336,7 +363,8 @@ def parse_report(path: str) -> pd.DataFrame:
         ).hexdigest()[:16],
         axis=1,
     )
-    return result
+    stats["นำเข้า"] = len(result)
+    return result, stats
 
 
 def export_csv(frame: pd.DataFrame, name: str) -> str:
@@ -395,7 +423,7 @@ def toggle_admin(role: str):
 # Executive dashboard (public, no login required)
 # ---------------------------------------------------------------------------
 
-RANKING_COLUMNS = ["HCODE", "รายการ", "PP", "FS", "ยอดรวม"]
+RANKING_COLUMNS = ["HCODE", "รายการ", "PP", "FS", "ยอดรวม", "ยอดชดเชยทั้งสิ้น"]
 
 
 def format_ranking_table(ranking: pd.DataFrame) -> pd.DataFrame:
@@ -404,7 +432,7 @@ def format_ranking_table(ranking: pd.DataFrame) -> pd.DataFrame:
     display = ranking.copy()
     display["HCODE"] = display["HCODE"].map(hcode_label)
     display["รายการ"] = display["รายการ"].map(lambda v: f"{int(v):,}")
-    for col in ("PP", "FS", "ยอดรวม"):
+    for col in ("PP", "FS", "ยอดรวม", "ยอดชดเชยทั้งสิ้น"):
         display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
     return display
 
@@ -428,7 +456,7 @@ def refresh_dashboard():
     top10 = ranking.head(10) if not ranking.empty else ranking
 
     return (
-        f"{float(totals.get('total') or 0):,.2f} บาท",
+        f"{float(totals.get('grand_total') or 0):,.2f} บาท",
         f"{float(totals.get('pp') or 0):,.2f} บาท",
         f"{float(totals.get('fs') or 0):,.2f} บาท",
         f"{count:,} รายการ",
@@ -438,6 +466,41 @@ def refresh_dashboard():
         format_ranking_table(ranking),
         updated,
     )
+
+
+# ---------------------------------------------------------------------------
+# Frequent-amount table: the "ตัวเลขพบบ่อย" view from the reference workbook,
+# rebuilt live from whatever is currently in the database.
+# ---------------------------------------------------------------------------
+
+FREQUENCY_COLUMNS = ["ยอดชดเชยทั้งสิ้น", "จำนวนครั้ง", "รวมเงิน", "ตีความตามกติกา", "สถานะ"]
+
+
+def build_amount_frequency():
+    try:
+        frequency = db.get_amount_frequency()
+    except Exception as exc:  # noqa: BLE001
+        return pd.DataFrame(columns=FREQUENCY_COLUMNS), f"⚠️ โหลดไม่สำเร็จ: {exc}"
+    if frequency.empty:
+        return pd.DataFrame(columns=FREQUENCY_COLUMNS), "ยังไม่มีข้อมูล"
+
+    rows = []
+    for rec in frequency.to_dict(orient="records"):
+        amount = float(rec["ยอดชดเชยทั้งสิ้น"])
+        status, label = service_matching.explain_amount(amount)
+        rows.append(
+            {
+                "ยอดชดเชยทั้งสิ้น": f"{amount:,.2f}",
+                "จำนวนครั้ง": f"{int(rec['จำนวนครั้ง']):,}",
+                "รวมเงิน": f"{float(rec['รวมเงิน']):,.2f}",
+                "ตีความตามกติกา": label,
+                "สถานะ": status,
+            }
+        )
+    covered = int(frequency["จำนวนครั้ง"].sum())
+    covered_amount = float(frequency["รวมเงิน"].sum())
+    note = f"แสดง {len(rows)} ยอดที่พบบ่อยที่สุด · ครอบคลุม {covered:,} รายการ · รวม {covered_amount:,.2f} บาท"
+    return pd.DataFrame(rows, columns=FREQUENCY_COLUMNS), note
 
 
 # ---------------------------------------------------------------------------
@@ -563,14 +626,11 @@ def process_upload(files: list[str] | None, uploader: str):
     for path in files:
         name = os.path.basename(path)
         try:
-            frame = parse_report(path)
+            frame, stats = parse_report(path)
         except Exception as exc:  # noqa: BLE001
             lines.append(f"❌ {name}: อ่านไฟล์ไม่สำเร็จ ({exc})")
             continue
 
-        before = len(frame)
-        frame = frame.drop_duplicates("รหัสรายการ", keep="first")
-        internal_duplicate = before - len(frame)
         report_period = frame["รอบรายงาน"].iloc[0] if not frame.empty else name
 
         try:
@@ -579,11 +639,13 @@ def process_upload(files: list[str] | None, uploader: str):
             lines.append(f"❌ {name}: บันทึกฐานข้อมูลไม่สำเร็จ ({exc})")
             continue
 
-        skipped = outcome["duplicate_count"] + internal_duplicate
-        line = f"✅ {name} (รอบ {report_period}): บันทึกใหม่ {outcome['inserted_count']:,} รายการ"
-        if skipped:
-            line += f" · ข้ามรายการซ้ำ {skipped:,} รายการ"
-        lines.append(line)
+        lines.append(
+            f"✅ {name} (รอบ {report_period}): อ่าน {stats['อ่านได้']:,} แถว "
+            f"· ตัดแถวที่ไม่มีเงิน PP/FS {stats['ไม่มีเงิน PP/FS']:,} แถว "
+            f"· ตัด TRAN_ID ซ้ำในไฟล์ {stats['TRAN_ID ซ้ำ/ว่างในไฟล์']:,} แถว "
+            f"· เข้าเกณฑ์ {stats['นำเข้า']:,} แถว → บันทึกใหม่ {outcome['inserted_count']:,} รายการ "
+            f"(ซ้ำกับที่มีอยู่แล้ว {outcome['duplicate_count']:,} รายการ)"
+        )
 
     return "\n".join(lines)
 
@@ -720,7 +782,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             <div class="icon">{_header_icon}</div>
             <div>
                 <h1>ระบบติดตามเงินชดเชย OPPP</h1>
-                <p>สรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก — ภาพรวมผลการดำเนินงานสะสม</p>
+                <p>สรุปยอดชดเชยทั้งสิ้นของรายการที่มีเงิน PP/FS ตามหน่วยบริการ HCODE 5 หลัก — ภาพรวมผลการดำเนินงานสะสม</p>
             </div>
         </div>
         """
@@ -730,7 +792,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
     with gr.Row(elem_classes="kpi-row"):
         with gr.Group(elem_classes="kpi-card"):
-            kpi_total = gr.Textbox(label="💰 ยอดชดเชยสะสมทั้งหมด", interactive=False)
+            kpi_total = gr.Textbox(label="💰 ยอดชดเชยทั้งสิ้นสะสม", interactive=False)
         with gr.Group(elem_classes="kpi-card"):
             kpi_pp = gr.Textbox(label="💵 ยอด PP สะสม", interactive=False)
         with gr.Group(elem_classes="kpi-card"):
@@ -747,7 +809,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         gr.Markdown("### 🏆 อันดับหน่วยบริการตามยอดชดเชย (Top 10)", elem_classes="section-title")
         top_hcode_plot = gr.BarPlot(
             value=pd.DataFrame(columns=RANKING_COLUMNS),
-            x="HCODE", y="ยอดรวม",
+            x="HCODE", y="ยอดชดเชยทั้งสิ้น",
             title=None, height=280, show_label=False,
         )
 
@@ -762,12 +824,23 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         breakdown_label = gr.Markdown("### 🔍 รายละเอียดบริการ\nคลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น")
         breakdown_table = gr.Dataframe(value=pd.DataFrame(columns=BREAKDOWN_COLUMNS), interactive=False)
 
+    with gr.Group(elem_classes="card"):
+        gr.Markdown("### 🔢 ยอดชดเชยที่พบบ่อย", elem_classes="section-title")
+        gr.Markdown(
+            "นับเฉพาะรายการที่มีเงินใน PP หรือ FS และตัด TRAN_ID ซ้ำแล้ว "
+            "· คอลัมน์ 'ตีความตามกติกา' อ้างอิงแฟ้มกติกาที่ยืนยันไว้ ยอดที่ระบุว่ากำกวมต้องดูรหัสบริการประกอบ",
+            elem_classes="hint-text",
+        )
+        frequency_note = gr.Markdown("กำลังโหลดข้อมูล...")
+        frequency_table = gr.Dataframe(value=pd.DataFrame(columns=FREQUENCY_COLUMNS), interactive=False, wrap=True)
+
     refresh_timer = gr.Timer(30)
 
     dashboard_outputs = [
         kpi_total, kpi_pp, kpi_fs, kpi_count, kpi_hcode, kpi_latest,
         top_hcode_plot, ranking_table, updated_badge,
     ]
+    frequency_outputs = [frequency_table, frequency_note]
 
     # -----------------------------------------------------------------
     # Developer console (hidden until admin login)
@@ -881,9 +954,13 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     # -----------------------------------------------------------------
 
     demo.load(refresh_dashboard, outputs=dashboard_outputs).then(
+        build_amount_frequency, outputs=frequency_outputs
+    ).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     )
-    refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs)
+    refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs).then(
+        build_amount_frequency, outputs=frequency_outputs
+    )
 
     ranking_table.select(on_select_facility, outputs=[breakdown_label, breakdown_table])
 
@@ -915,6 +992,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     ).then(
         refresh_dashboard, outputs=dashboard_outputs
     ).then(
+        build_amount_frequency, outputs=frequency_outputs
+    ).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
@@ -923,12 +1002,16 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     rollback_btn.click(rollback_selected, inputs=batch_dropdown, outputs=batch_status).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(refresh_dashboard, outputs=dashboard_outputs).then(
+        build_amount_frequency, outputs=frequency_outputs
+    ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
     )
 
     restore_btn.click(restore_selected, inputs=batch_dropdown, outputs=batch_status).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(refresh_dashboard, outputs=dashboard_outputs).then(
+        build_amount_frequency, outputs=frequency_outputs
+    ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
     )
 

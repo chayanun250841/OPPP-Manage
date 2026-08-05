@@ -35,12 +35,17 @@ CREATE TABLE IF NOT EXISTS records (
     pp NUMERIC NOT NULL DEFAULT 0,
     fs NUMERIC NOT NULL DEFAULT 0,
     total NUMERIC NOT NULL DEFAULT 0,
+    grand_total NUMERIC NOT NULL DEFAULT 0,
     source_file TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- grand_total = คอลัมน์สุดท้าย 'ยอดชดเชยทั้งสิ้น' ของแฟ้มต้นทาง (อาจมากกว่า pp+fs
+-- เมื่อแถวนั้นได้เงินจากกองทุนอื่นด้วย) เพิ่มทีหลังจึงต้อง ALTER สำหรับฐานเดิม
+ALTER TABLE records ADD COLUMN IF NOT EXISTS grand_total NUMERIC NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_records_hcode ON records(hcode);
 CREATE INDEX IF NOT EXISTS idx_records_batch ON records(batch_id);
 CREATE INDEX IF NOT EXISTS idx_records_period ON records(report_period);
+CREATE INDEX IF NOT EXISTS idx_records_tran ON records(tran_id);
 
 CREATE TABLE IF NOT EXISTS allocations (
     id SERIAL PRIMARY KEY,
@@ -70,10 +75,15 @@ def init_db() -> None:
 
 
 def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: pd.DataFrame) -> dict:
-    """Insert a new upload batch and its records. Rows whose record_code already exists
-    anywhere in the table (any batch, any time) are skipped so re-uploading the same
-    file, or overlapping data across months, never double-counts."""
+    """Insert a new upload batch and its records.
+
+    Deduplication is by TRAN_ID across the whole table (any batch, any month) --
+    TRAN_ID is the transaction identity in the OPPP report, so the same claim
+    appearing in two files must only ever be counted once. `record_code` stays
+    the primary key and acts as a second safety net against byte-identical rows.
+    """
     batch_id = str(uuid.uuid4())
+    submitted = len(frame)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -81,8 +91,16 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
                 INSERT INTO upload_batches (batch_id, report_period, source_file, uploaded_by, record_count)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (batch_id, report_period, source_file, uploaded_by, len(frame)),
+                (batch_id, report_period, source_file, uploaded_by, submitted),
             )
+            tran_ids = [t for t in frame["TRAN_ID"].astype(str).tolist() if t]
+            if tran_ids:
+                cur.execute("SELECT tran_id FROM records WHERE tran_id = ANY(%s)", (tran_ids,))
+                existing = {row[0] for row in cur.fetchall()}
+            else:
+                existing = set()
+            fresh = frame[~frame["TRAN_ID"].astype(str).isin(existing)]
+
             rows = [
                 (
                     row["รหัสรายการ"],
@@ -96,16 +114,17 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
                     float(row["PP"]),
                     float(row["FS"]),
                     float(row["ยอดรวม"]),
+                    float(row["ยอดชดเชยทั้งสิ้น"]),
                     row["ไฟล์ต้นทาง"],
                 )
-                for _, row in frame.iterrows()
+                for _, row in fresh.iterrows()
             ]
             if rows:
                 psycopg2.extras.execute_values(
                     cur,
                     """
                     INSERT INTO records
-                        (record_code, batch_id, report_period, tran_id, pid, full_name, hcode, visit_date, pp, fs, total, source_file)
+                        (record_code, batch_id, report_period, tran_id, pid, full_name, hcode, visit_date, pp, fs, total, grand_total, source_file)
                     VALUES %s
                     ON CONFLICT (record_code) DO NOTHING
                     """,
@@ -116,7 +135,7 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
                 (batch_id,),
             )
             inserted_count, pp_total, fs_total = cur.fetchone()
-            duplicate_count = len(frame) - inserted_count
+            duplicate_count = submitted - inserted_count
             cur.execute(
                 """
                 UPDATE upload_batches
@@ -162,6 +181,7 @@ def get_overall_totals() -> dict:
             COALESCE(SUM(r.pp), 0) AS pp,
             COALESCE(SUM(r.fs), 0) AS fs,
             COALESCE(SUM(r.total), 0) AS total,
+            COALESCE(SUM(r.grand_total), 0) AS grand_total,
             COUNT(*) AS count,
             COUNT(DISTINCT r.hcode) AS hcode_count,
             COUNT(DISTINCT r.report_period) AS period_count,
@@ -202,15 +222,35 @@ def get_summary_by_hcode() -> pd.DataFrame:
             COUNT(*) AS "รายการ",
             SUM(r.pp) AS "PP",
             SUM(r.fs) AS "FS",
-            SUM(r.total) AS "ยอดรวม"
+            SUM(r.total) AS "ยอดรวม",
+            SUM(r.grand_total) AS "ยอดชดเชยทั้งสิ้น"
         FROM records r
         JOIN upload_batches b ON b.batch_id = r.batch_id
         WHERE b.status = 'active'
         GROUP BY r.hcode
-        ORDER BY "ยอดรวม" DESC, "HCODE" ASC
+        ORDER BY "ยอดชดเชยทั้งสิ้น" DESC, "HCODE" ASC
     """
     with get_connection() as conn:
         return pd.read_sql(query, conn)
+
+
+def get_amount_frequency(limit: int = 30) -> pd.DataFrame:
+    """ตัวเลข 'ยอดชดเชยทั้งสิ้น' ที่พบบ่อย เรียงตามจำนวนครั้ง -- ตรงกับแฟ้มอ้างอิง
+    'ตัวเลขพบบ่อย' ที่ใช้ตีความว่าแต่ละยอดคือชุดบริการอะไร"""
+    query = """
+        SELECT
+            r.grand_total AS "ยอดชดเชยทั้งสิ้น",
+            COUNT(*) AS "จำนวนครั้ง",
+            SUM(r.grand_total) AS "รวมเงิน"
+        FROM records r
+        JOIN upload_batches b ON b.batch_id = r.batch_id
+        WHERE b.status = 'active' AND r.grand_total > 0
+        GROUP BY r.grand_total
+        ORDER BY "จำนวนครั้ง" DESC, "ยอดชดเชยทั้งสิ้น" DESC
+        LIMIT %s
+    """
+    with get_connection() as conn:
+        return pd.read_sql(query, conn, params=(limit,))
 
 
 def get_records_for_hcode(hcode: str) -> pd.DataFrame:
@@ -288,6 +328,7 @@ def get_raw_records() -> pd.DataFrame:
             r.pp AS "PP",
             r.fs AS "FS",
             r.total AS "ยอดรวม",
+            r.grand_total AS "ยอดชดเชยทั้งสิ้น",
             r.source_file AS "ไฟล์ต้นทาง",
             r.record_code AS "รหัสรายการ"
         FROM records r

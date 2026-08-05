@@ -15,6 +15,8 @@
     {"code": "8", "name": "ยาเม็ดเสริมธาตุเหล็กและกรดโฟลิก พร้อมคำแนะนำ/ติดตาม", "rate_claim": 80, "rate_facility_share": 35, "matchable": false},
     {"code": "9.1", "name": "วางแผนครอบครัว: ยาเม็ดคุมกำเนิดชนิดฮอร์โมนรวม (COC)", "rate_claim": 120, "rate_facility_share": 30, "matchable": true, "note": "1 ครั้ง (การจ่ายยา 1 ครั้ง) = 3 แผง x 40 บาท = 120 บาท; ส่วนแบ่งจังหวัด 10 บาท/แผง x 3 = 30 บาท/ครั้ง"},
     {"code": "9.2", "name": "วางแผนครอบครัว: ยาเม็ดคุมกำเนิดชนิดฮอร์โมนเดี่ยว (POP/LYNESTRENOL)", "rate_claim": 240, "rate_facility_share": 0, "matchable": true, "note": "1 ครั้ง (การจ่ายยา 1 ครั้ง) = 3 แผง x 80 บาท = 240 บาท; จังหวัดไม่จ่ายส่วนแบ่งเพิ่มให้ รพ.สต."},
+    {"code": "9.1ก", "name": "วางแผนครอบครัว: ยาเม็ดคุมกำเนิดชนิดฮอร์โมนรวม (COC) 1 แผง", "rate_claim": 40, "rate_facility_share": 10, "matchable": true, "note": "หน่วยย่อยของ 9.1 -- ข้อมูลจริงมียอด 40 (1 แผง) และ 80 (2 แผง) ปรากฏด้วย ไม่ได้จ่ายครั้งละ 3 แผงเสมอ"},
+    {"code": "9.2ก", "name": "วางแผนครอบครัว: ยาเม็ดคุมกำเนิดชนิดฮอร์โมนเดี่ยว (POP/LYNESTRENOL) 1 แผง", "rate_claim": 80, "rate_facility_share": 0, "matchable": true, "note": "หน่วยย่อยของ 9.2; ยอด 80 จึงกำกวมระหว่าง POP 1 แผง กับ COC 2 แผง -- ดู assets/amount_rules.json"},
     {"code": "9.3", "name": "วางแผนครอบครัว: ยาคุมฉุกเฉิน", "rate_claim": 50, "rate_facility_share": 0, "matchable": false},
     {"code": "9.4", "name": "วางแผนครอบครัว: ถุงยางอนามัย", "rate_claim": 10, "rate_facility_share": 10, "matchable": true},
     {"code": "9.5", "name": "วางแผนครอบครัว: ยาฉีดคุมกำเนิด", "rate_claim": 60, "rate_facility_share": 30, "matchable": true},

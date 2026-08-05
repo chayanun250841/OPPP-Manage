@@ -13,7 +13,43 @@ import os
 from collections import defaultdict
 
 _RATES_PATH = os.path.join(os.path.dirname(__file__), "assets", "service_rates.json")
+_RULES_PATH = os.path.join(os.path.dirname(__file__), "assets", "amount_rules.json")
 _AMOUNT_TOLERANCE = 0.01
+
+
+def _load_amount_rules() -> dict[float, dict]:
+    """Human-confirmed interpretations of the amounts that actually occur, from
+    the reference workbook. These win over the automatic combo search because a
+    person signed off on them."""
+    try:
+        with open(_RULES_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {round(float(rule["amount"]), 2): rule for rule in data.get("rules", [])}
+
+
+AMOUNT_RULES = _load_amount_rules()
+
+
+def rule_for_amount(amount: float) -> dict | None:
+    if amount is None or amount <= 0:
+        return None
+    rounded = round(float(amount), 2)
+    for value, rule in AMOUNT_RULES.items():
+        if abs(value - rounded) <= _AMOUNT_TOLERANCE:
+            return rule
+    return None
+
+
+def explain_amount(amount: float) -> tuple[str, str]:
+    """(status, คำอธิบาย) ของยอดหนึ่งยอด โดยยึดกติกาที่คนยืนยันไว้ก่อน
+    ถ้าไม่มีกติกาจึงค่อยตกไปใช้การจับคู่อัตโนมัติ"""
+    rule = rule_for_amount(amount)
+    if rule is not None:
+        status = "🟡 กำกวม" if rule.get("kind") == "กำกวม" else "🟢 ตามกติกา"
+        return status, rule["label"]
+    return predict_combo_label(amount)
 
 
 def _load_rate_index() -> dict[float, list[str]]:
