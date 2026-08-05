@@ -927,13 +927,14 @@ def add_allocation_db(
 
 
 def export_ledger_csv():
+    """Returns (ไฟล์, ข้อความสถานะ) to match the download-button wiring."""
     try:
         ledger = db.get_allocation_ledger()
-    except Exception:  # noqa: BLE001
-        return None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"❌ อ่านสมุดจัดสรรไม่สำเร็จ: {exc}"
     if ledger.empty:
-        return None
-    return export_csv(ledger, "สมุดจัดสรรบริการ")
+        return None, "⚠️ สมุดจัดสรรยังว่างอยู่"
+    return export_csv(ledger, "สมุดจัดสรรบริการ"), f"✅ พร้อมดาวน์โหลด · {len(ledger):,} แถว"
 
 
 # ---------------------------------------------------------------------------
@@ -1006,9 +1007,10 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                     ranking_table = gr.Dataframe(
                         value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False, wrap=True
                     )
-                with gr.Row():
-                    ranking_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-                    ranking_excel_file = gr.File(label="ไฟล์ Excel")
+                # DownloadButton streams the file straight to the browser on
+                # click. A plain Button + File pair only *parked* the file in a
+                # box the user then had to spot and click a second time.
+                ranking_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
                 ranking_excel_status = gr.Markdown(elem_classes="hint-text")
 
             with gr.Group(elem_classes="card"):
@@ -1092,17 +1094,14 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล"):
             with gr.Accordion("🧑‍⚕️ ตารางตรวจสอบรายบุคคล", open=True):
                 people_table = gr.Dataframe(interactive=False, wrap=True)
-            people_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-            people_excel_file = gr.File(label="ไฟล์ Excel")
+            people_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
             people_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("🗂️ ข้อมูลต้นทาง"):
             with gr.Accordion("🗂️ ตารางข้อมูลต้นทาง", open=True):
                 raw_table = gr.Dataframe(interactive=False, wrap=True)
             raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
-            with gr.Row():
-                raw_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-                raw_excel_file = gr.File(label="ไฟล์ Excel")
+            raw_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
             raw_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("📊 วิเคราะห์รายบริการ"):
@@ -1130,9 +1129,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             with gr.Accordion("4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", open=True):
                 facility_reconcile_table = gr.Dataframe(interactive=False, wrap=True)
 
-            with gr.Row():
-                facility_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (ทุกตารางในหน้านี้)")
-                facility_excel_file = gr.File(label="ไฟล์ Excel")
+            facility_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel (ทุกตารางในหน้านี้)")
             facility_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
@@ -1151,9 +1148,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 all_facilities_table = gr.Dataframe(interactive=False, wrap=True, min_width=160)
             with gr.Accordion("📖 คำอธิบายรหัสรายการ", open=False):
                 summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
-            with gr.Row():
-                summary_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-                summary_excel_file = gr.File(label="ไฟล์ Excel")
+            summary_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
             summary_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("🧮 จัดสรรบริการ"):
@@ -1178,12 +1173,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False, wrap=True)
             with gr.Accordion("💳 ยอดคงเหลือต่อรายการ", open=False):
                 remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False, wrap=True)
-            with gr.Row():
-                ledger_export_btn = gr.Button("ดาวน์โหลดสมุดจัดสรร (CSV)")
-                ledger_download = gr.File(label="ไฟล์สมุดจัดสรร")
-            with gr.Row():
-                allocation_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (สมุดจัดสรร + ยอดคงเหลือ)")
-                allocation_excel_file = gr.File(label="ไฟล์ Excel")
+            ledger_export_btn = gr.DownloadButton("📥 ดาวน์โหลดสมุดจัดสรร (CSV)")
+            allocation_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel (สมุดจัดสรร + ยอดคงเหลือ)")
             allocation_excel_status = gr.Markdown(elem_classes="hint-text")
 
     admin_view_outputs = [people_table, raw_table, raw_download, allocation_table, code_dropdown, remaining_table]
@@ -1322,36 +1313,66 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         outputs=allocation_status,
     ).then(refresh_admin_views, inputs=role_state, outputs=admin_view_outputs)
 
-    ledger_export_btn.click(export_ledger_csv, outputs=ledger_download)
+    # Each handler writes the generated file back into the button that was
+    # clicked. gr.DownloadButton's own frontend does not reliably turn that
+    # value into a link, so a chained JS step reads the FileData the button now
+    # holds and starts the download itself -- one click, one file, no second
+    # link to hunt for. It must be `.then(...)`, not a separate `.click(...)`,
+    # or it would run against the button's previous (stale) value.
+    TRIGGER_DOWNLOAD_JS = """(f) => {
+        if (!f || !f.url) return;
+        const a = document.createElement('a');
+        a.href = f.url;
+        a.download = f.orig_name || '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }"""
 
-    ranking_excel_btn.click(
+    def wire_download(button, fn, inputs, status):
+        """Generate the file, then hand it to the browser to download."""
+        button.click(fn, inputs=inputs, outputs=[button, status]).then(
+            None, inputs=button, outputs=None, js=TRIGGER_DOWNLOAD_JS
+        )
+
+    wire_download(
+        ranking_excel_btn,
         lambda df: export_excel(df, "สรุปยอดชดเชยรายหน่วยบริการ"),
-        inputs=ranking_table, outputs=[ranking_excel_file, ranking_excel_status],
+        ranking_table, ranking_excel_status,
     )
-    people_excel_btn.click(
+    wire_download(
+        people_excel_btn,
         lambda df: export_excel(df, "ตรวจสอบรายบุคคล"),
-        inputs=people_table, outputs=[people_excel_file, people_excel_status],
+        people_table, people_excel_status,
     )
-    raw_excel_btn.click(
+    wire_download(
+        raw_excel_btn,
         lambda df: export_excel(df, "ข้อมูลต้นทาง"),
-        inputs=raw_table, outputs=[raw_excel_file, raw_excel_status],
+        raw_table, raw_excel_status,
     )
-    facility_excel_btn.click(
+    wire_download(
+        facility_excel_btn,
         lambda a, b, c, d: export_excel_sheets(
             "วิเคราะห์รายบริการ",
             รายชื่อผู้รับบริการ=a, คาดการณ์บริการ=b, สรุปจำนวนรายการ=c, เปรียบเทียบยอด=d,
         ),
-        inputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
-        outputs=[facility_excel_file, facility_excel_status],
+        [facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
+        facility_excel_status,
     )
-    summary_excel_btn.click(
+    wire_download(
+        summary_excel_btn,
         lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"),
-        inputs=all_facilities_table, outputs=[summary_excel_file, summary_excel_status],
+        all_facilities_table, summary_excel_status,
     )
-    allocation_excel_btn.click(
+    wire_download(
+        allocation_excel_btn,
         lambda a, b: export_excel_sheets("จัดสรรบริการ", สมุดจัดสรรบริการ=a, ยอดคงเหลือต่อรายการ=b),
-        inputs=[allocation_table, remaining_table],
-        outputs=[allocation_excel_file, allocation_excel_status],
+        [allocation_table, remaining_table], allocation_excel_status,
+    )
+    wire_download(
+        ledger_export_btn,
+        lambda: export_ledger_csv(),
+        None, allocation_excel_status,
     )
 
 
