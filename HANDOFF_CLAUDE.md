@@ -1,6 +1,8 @@
 # Handoff: OPPP Manage Dashboard
 
-เอกสารนี้สรุปงานที่ Codex ทำไว้ เพื่อให้ Claude รับช่วงต่อได้ทันที
+เอกสารนี้สรุปงานล่าสุดที่ Claude ทำไว้ (ต่อจากงานเดิมของ Codex) เพื่อให้ agent ตัวถัดไป (Codex หรือ Claude) รับช่วงต่อได้ทันที
+
+**อัปเดตล่าสุด:** 2026-08-04 — ย้ายจาก Hugging Face ไป Render + Supabase และ redesign ระบบใหม่ทั้งหมด
 
 ## เป้าหมายของระบบ
 
@@ -9,136 +11,105 @@
 - รวมยอดแยกตามหน่วยบริการด้วย `HCODE` 5 หลัก
 - แสดงยอด `PP`, `FS` และยอดรวม
 - ตรวจสอบรายการ/ชื่อผู้รับบริการซ้ำโดยไม่รวมยอดผิด
-- ในอนาคตต้องมีระบบจัดสรรยอดที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน
-- ในอนาคตต้องมี Login: ผู้ที่ยังไม่ Login เห็นเฉพาะข้อมูลยอดรวม; ผู้มีรหัสผ่านเห็นชื่อ, PID และข้อมูลเชิงลึก
+- หน้าแรกเป็น **Executive Dashboard** สาธารณะ (ไม่ต้อง login) โชว์เฉพาะภาพรวมผลงาน ไม่มี PID/ชื่อ
+- หน้า **Developer/Admin** ซ่อนไว้หลัง login เท่านั้น ใช้อัปโหลดไฟล์ + ดูข้อมูลรายบุคคล + จัดสรรบริการ
+- ข้อมูลเก็บถาวรจริงใน Postgres (Supabase) ไม่ใช่ session state แบบเดิม รองรับอัปโหลดสะสมหลายเดือน และย้อนกลับ (rollback) ไฟล์ที่อัปผิดได้
 
-> ข้อควรระวัง: แฟ้มรายงานมี PID และชื่อผู้รับบริการ จึงห้าม push ไฟล์ `.xls` ขึ้น GitHub/Hugging Face และห้ามเปิดข้อมูลรายบุคคลก่อนมีระบบ Login ที่ปลอดภัย
+> ข้อควรระวัง: แฟ้มรายงานมี PID และชื่อผู้รับบริการ จึงห้าม push ไฟล์ `.xls` ขึ้น GitHub และห้ามเปิดข้อมูลรายบุคคลก่อนมีระบบ auth ที่ปลอดภัย (ตอนนี้มีแล้วผ่าน username/password hash)
 
-## ที่เก็บโค้ด / การเผยแพร่
+## ที่เก็บโค้ด / การเผยแพร่ (เปลี่ยนจากเดิม)
 
-- GitHub: https://github.com/chayanun250841/OPPP-Manage
-- Hugging Face Space: https://huggingface.co/spaces/Chayanun2541/OPPP-Manage
-- HF Space ตั้งเป็น **Private** แล้ว
-- Git remote ในเครื่อง:
-  - `origin` = GitHub
-  - `hf` = Hugging Face Space
+- GitHub: https://github.com/chayanun250841/OPPP-Manage (branch `main`)
+- **Hugging Face Space ถูกลบทิ้งแล้ว** — HF บล็อกการ downgrade จาก ZeroGPU เป็น CPU basic ถ้าไม่มี PRO subscription และ Space ใหม่ก็เจอ hardware picker ที่ CPU Basic กดไม่ได้ (ต้อง verify บัญชี) จึงย้ายทั้งหมดไป **Render** แทน
+- **Deploy จริงอยู่ที่ Render**: https://oppp-manage.onrender.com (service ชื่อ `OPPP-Manage`, Free instance, auto-deploy จาก GitHub `main`)
+- Git remote ในเครื่อง: `origin` = GitHub เท่านั้น (remote `hf` เดิมยังอาจค้างอยู่ในเครื่อง แต่ไม่ได้ใช้แล้วเพราะ HF Space ถูกลบ)
 
-ทั้ง GitHub และ HF อยู่ที่ branch `main` และล่าสุดควรมี commit `f981117` เป็น merge commit ที่เชื่อมประวัติของทั้งสองฝั่ง
+## ฐานข้อมูล: Supabase Postgres
 
-## ไฟล์ในโปรเจกต์
+- โปรเจกต์ Supabase ชื่อ `oppp-manage`, region **Southeast Asia (Singapore / ap-southeast-1)**
+- **สำคัญ**: ต้องต่อผ่าน **Session pooler** (`aws-0-ap-southeast-1.pooler.supabase.com:5432`) ไม่ใช่ Direct connection (`db.xxx.supabase.co:5432`) เพราะ Direct ใช้ IPv6 ซึ่ง Render เข้าไม่ถึง (error "Network is unreachable")
+- Username ของ pooler ต้องเป็นรูปแบบ `postgres.<project-ref>` (เช่น `postgres.wmgptvmspxmevpzxviwt`) ไม่ใช่ `postgres` เฉยๆ ไม่งั้นจะเจอ "password authentication failed"
+- Connection string เก็บเป็น env var `DATABASE_URL` ใน Render → Environment (ไม่ commit ลง repo)
+- Schema ถูกสร้างอัตโนมัติตอน `app.py` เริ่มทำงาน ผ่าน `db.init_db()` (ดู `db.py` → ตัวแปร `SCHEMA`)
+- ตารางหลัก 3 ตาราง:
+  - `upload_batches` — 1 แถวต่อ 1 ไฟล์ที่อัปโหลด (มี `status` = `active` / `rolled_back` ใช้ทำ rollback แบบ soft-delete)
+  - `records` — ข้อมูลรายรายการ (record_code เป็น PRIMARY KEY กันซ้ำข้ามไฟล์/ข้ามเดือนอัตโนมัติผ่าน `ON CONFLICT DO NOTHING`)
+  - `allocations` — สมุดจัดสรรบริการ (เดิมเป็น in-memory ledger, ตอนนี้ persist ถาวร)
+- ทุก query อ่านข้อมูลจะ `JOIN` กับ `upload_batches` และกรอง `WHERE status = 'active'` เสมอ เพื่อให้ batch ที่ถูก rollback หายไปจากสรุปทันทีโดยไม่ต้องลบข้อมูลจริง
 
-- `app.py` — Dashboard แบบ Gradio
-- `requirements.txt` — `gradio`, `pandas`, `xlrd`
-- `README.md` — มี Hugging Face Space YAML metadata แล้ว
-- `.gitignore` — ไม่รวม virtual environment และไฟล์ secret
-- `ปีงบประมาณ 2569/` — รายงาน `.xls` ต้นทางในเครื่องเท่านั้น **ยังไม่ถูก commit**
+## Environment Variables ที่ต้องตั้งใน Render
 
-## รูปแบบไฟล์รายงานจริง
+| Key | ค่า | หมายเหตุ |
+| --- | --- | --- |
+| `DATABASE_URL` | connection string แบบ Session pooler ของ Supabase | ห้ามใส่ลงโค้ด/commit |
+| `OPPP_ADMIN_USERNAME` | `Chayanun250841` | ตามที่ผู้ใช้กำหนด |
+| `OPPP_ADMIN_PASSWORD_HASH` | sha256 hash ของรหัสผ่านที่ตั้ง | สร้างด้วย `python -c "import hashlib; print(hashlib.sha256('รหัสผ่าน'.encode()).hexdigest())"` — **ห้าม**เก็บรหัสผ่าน plaintext ไว้ที่ไหนทั้งสิ้น |
 
-ตัวอย่าง:
+ตั้งค่าครบทั้ง 3 ตัวแล้วที่ Render ตอนนี้ (ยืนยันแล้วว่า `DATABASE_URL` เชื่อมต่อสำเร็จ ไม่มี error ในหน้าแรก)
 
-- `ปีงบประมาณ 2569/กค/6907_OP_01.xls`
-- `ปีงบประมาณ 2569/เมย/6904_OP_02.xls`
+## สถาปัตยกรรมไฟล์
 
-รูปแบบเป็น `.xls` แบบเก่า และมีชีต `รายงานพึงจ่าย`
+- `app.py` — Gradio Blocks UI ทั้งหมด (parse .xls, executive dashboard, hidden admin console, event wiring)
+- `db.py` — data access layer ทั้งหมดที่คุย Postgres ผ่าน `psycopg2` (ไม่มี ORM)
+- `requirements.txt` — `gradio`, `pandas`, `xlrd`, `psycopg2-binary`
+- `README.md` — ยังพูดถึง Hugging Face อยู่ (**ยังไม่ได้อัปเดต** ให้ตรงกับ Render — ควรแก้ทีหลัง)
 
-- แถวหัวตารางแบ่งเป็น 2 ระดับ
-  - แถวบนมี `TRAN_ID`, `PID`, `ชื่อ-นามสกุล`, `วันเข้ารักษา`
-  - แถวถัดมามี `HCODE`, `PP`, `FS`
-- ข้อมูลเริ่มหลังหัวตาราง 2 แถว
-- มีแถวสรุปท้ายรายงาน ซึ่งต้องตัดออก
-- `HCODE` ต้องแสดงเป็น 5 หลัก เช่น `07852` (ห้ามทำศูนย์นำหน้าหาย)
+## โครงสร้างหน้าเว็บใหม่
 
-## สิ่งที่ `app.py` ทำได้แล้ว
+1. **Accordion ซ่อนไว้บนสุด** (`🔒 สำหรับผู้ดูแลระบบ`, ปิดอยู่โดย default) — กรอก username/password login ที่นี่
+2. **หน้าแรก (public, ไม่ต้อง login)** — Executive Dashboard:
+   - Header banner สไตล์กระทรวงสาธารณสุข (navy + gold, ธีม custom `NAVY`/`GOLD` ใน `app.py`)
+   - KPI cards 6 ใบ: ยอดรวมสะสม, PP สะสม, FS สะสม, จำนวนรายการสะสม, จำนวนหน่วยบริการ, รอบข้อมูลล่าสุด
+   - กราฟเส้นแนวโน้มรายเดือน + กราฟแท่ง Top 10 HCODE + ตารางสรุปทั้งหมด
+   - `gr.Timer(30)` รีเฟรชข้อมูลอัตโนมัติทุก 30 วินาที (ให้ความรู้สึก realtime)
+3. **หน้า Developer (ซ่อนด้วย `visible=False`, โผล่มาหลัง login สำเร็จเท่านั้น)**:
+   - อัปโหลดไฟล์ `.xls` หลายไฟล์พร้อมกัน + ช่องกรอกผู้บันทึก → กดปุ่ม **"⚙️ ประมวลผลและบันทึกลงฐานข้อมูล"**
+   - ตารางประวัติการอัปโหลด (ทุกไฟล์ที่เคยอัป) + dropdown เลือกไฟล์ + ปุ่ม "↩️ ย้อนกลับ" / "♻️ กู้คืน" (soft-delete ผ่าน `upload_batches.status`)
+   - แท็บ "ตรวจสอบรายบุคคล", "ข้อมูลต้นทาง" (โชว์ PID/ชื่อ เฉพาะ admin), "จัดสรรบริการ" (เขียนลงตาราง `allocations` จริง ไม่ใช่ CSV import/export แบบเดิมแล้ว — ตัดฟีเจอร์ import CSV ของ ledger ออกเพราะไม่จำเป็นอีกต่อไปเมื่อมี DB ถาวร เหลือแค่ export ไว้ backup)
 
-1. อัปโหลดไฟล์ `.xls` ได้หลายไฟล์
-2. อ่านข้อมูล `TRAN_ID`, `PID`, ชื่อ, HCODE, วันเข้ารักษา, PP และ FS
-3. สร้าง `รหัสรายการ` แบบ hash จาก รอบรายงาน + TRAN_ID + PID + HCODE + วัน + PP + FS
-4. ตัดเฉพาะแถวซ้ำที่เหมือนกันทุกช่องดังกล่าว
-5. สรุปยอด PP / FS / ยอดรวมตาม HCODE
-6. สรุปยอดตามรายบุคคลเพื่อการตรวจสอบ
-7. ส่งออก CSV สรุป HCODE และ CSV ข้อมูลหลังกันซ้ำ
+## ⚠️ ปัญหาที่ยังไม่ได้แก้ (ต้องตามต่อ)
 
-## ผลทดสอบที่ทำแล้ว
+**ปุ่ม "⚙️ ประมวลผลและบันทึกลงฐานข้อมูล" กดแล้วดูเหมือนไม่มีอะไรเกิดขึ้น** — ผู้ใช้ทดสอบอัปโหลดไฟล์จริง 2 ไฟล์ (`6906_OP_02.xls` ~292KB, `6907_OP_01.xls` ~1.1MB) กรอกผู้บันทึก "Admin" แล้วกดปุ่ม แต่ไม่เห็นผลลัพธ์ใดๆ บน production (Render)
 
-รันตัวอ่านกับข้อมูลจริงสำเร็จ:
+ยังไม่ได้ debug จริงจัง แนวทางที่ควรเช็คก่อน:
 
-| ไฟล์ | รายการหลังตัดแถวสรุป | PP | FS | จำนวน HCODE |
-| --- | ---: | ---: | ---: | ---: |
-| `6907_OP_01.xls` | 617 | 39,615.00 | 667.50 | 5 |
-| `6904_OP_02.xls` | 70 | 1,200.00 | 0.00 | 4 |
+1. **เช็ค browser console** (DevTools → Console/Network) ตอนกดปุ่ม ว่ามี JS error หรือ request ค้างอยู่ไหม
+2. **เช็ค Render → Logs** ตอนกดปุ่ม ว่ามี Python traceback ขึ้นมาไหม (ถ้า exception หลุดจาก `process_upload` โดยไม่ถูก catch อาจทำให้ Gradio event handler ค้าง)
+3. **สงสัยเรื่อง performance**: Render free tier มี CPU จำกัดมาก (แชร์ 0.1 vCPU) การ parse ไฟล์ `.xls` ด้วย pandas (โดยเฉพาะไฟล์ 1.1MB ที่มีหลายร้อย/พันแถว) + insert ลง Postgres อาจใช้เวลานานกว่าที่คิด ให้ลองรอ 30-60 วินาทีหลังกดปุ่มดูก่อนว่าเป็นแค่ "ช้า" หรือ "ค้างจริง"
+4. **เช็คว่า `uploader_name` ไม่ว่าง** — โค้ดใน `process_upload()` (`app.py`) จะ return ข้อความ error ทันทีถ้าไม่กรอกชื่อผู้บันทึก แต่จากภาพที่ทดสอบกรอกไว้แล้วว่า "Admin" จึงไม่น่าใช่สาเหตุนี้
+5. ลองทดสอบ local ก่อน (`python app.py` พร้อมตั้ง `DATABASE_URL` เดียวกันในเครื่อง) จะ debug ง่ายกว่าเพราะเห็น traceback ตรงๆ ใน terminal ไม่ต้องผ่าน Render log delay
 
-## ปัญหาปัจจุบันของ Hugging Face
+## ผลทดสอบที่ทำแล้ว (ก่อนเจอบั๊กข้างบน)
 
-Space ขึ้น Runtime error:
-
-```text
-No @spaces.GPU function detected during startup
-```
-
-จากหน้า Space แสดงว่า Space ถูกตั้งเป็น **ZeroGPU** แต่แอปนี้เป็นงาน CPU เท่านั้น จึงไม่ควรแก้ด้วย `@spaces.GPU`.
-
-### วิธีแก้ที่ควรทำก่อน
-
-เปลี่ยน Hardware ของ Space เป็น **CPU Basic (Free)** ใน Hugging Face:
-
-1. เข้า Space
-2. เปิด `Settings` (อาจอยู่ในเมนู `...`)
-3. เปลี่ยน `Hardware` จาก ZeroGPU เป็น CPU Basic
-4. Save / Restart
-
-ไม่ต้องแก้โค้ดเพื่อใช้ GPU
+- ✅ Local: boot สำเร็จโดยไม่มี `DATABASE_URL` (fail gracefully, ไม่ crash)
+- ✅ Local: login/logout ด้วย username+password ทดสอบทำงานถูกต้อง, หน้า Developer โผล่/ซ่อนตาม role
+- ✅ Production (Render): เชื่อมต่อ Supabase สำเร็จผ่าน Session pooler, schema ถูกสร้างอัตโนมัติ, หน้าแรกโหลด "ข้อมูลสะสม 0 รายการ" โดยไม่มี error
+- ❌ Production: ยังไม่เคยอัปโหลดไฟล์ผ่านสำเร็จเลยสักไฟล์ (ติดปัญหาข้างบน)
 
 ## สิ่งที่ควรทำต่อ
 
-### 1. ยืนยันแอปรันบน HF
+### 1. Debug ปุ่มอัปโหลดตามหัวข้อข้างบนก่อนเป็นอันดับแรก
 
-หลังเปลี่ยนเป็น CPU Basic ให้รอ build แล้วทดสอบอัปโหลดไฟล์จริง 1 ไฟล์
+### 2. อัปเดต README.md
 
-### 2. เพิ่มระบบ Login และ role-based access (ก่อนเปลี่ยน Space เป็น Public)
+ยังพูดถึง Hugging Face/Gradio Space อยู่ทั้งหมด ต้องเขียนใหม่ให้ตรงกับ Render + Supabase + โครงสร้างหน้าใหม่
 
-ข้อกำหนดของผู้ใช้:
+### 3. พิจารณาลบไฟล์/remote ที่เกี่ยวกับ HF ที่ไม่ใช้แล้ว
 
-- ผู้ใช้ทั่วไป/ยังไม่ Login: เห็นเฉพาะยอดสรุปตาม HCODE และไม่มี PID/ชื่อ/รายการดิบ
-- ผู้มี Password: เห็นตารางรายบุคคล, PID, รายละเอียดต้นทาง และเครื่องมือจัดสรรยอด
+`git remote` ชื่อ `hf` (ถ้ายังอยู่ในเครื่อง) ไม่ได้ใช้แล้วเพราะ Space ถูกลบไปแล้ว
 
-แนวทางความปลอดภัยที่แนะนำ:
+### 4. Free tier caveats ที่ควรรู้
 
-- อย่าฝัง password ลงใน `app.py` หรือ commit ลง GitHub
-- เก็บค่า credential/secret ใน Hugging Face `Settings -> Variables and secrets`
-- ใช้ password hash ไม่ใช่ plaintext หากจะรองรับผู้ใช้หลายราย
-- อย่าเปิด Space เป็น Public จนกว่า tab ข้อมูลบุคคลจะถูกป้องกันจริง
-- ต้องพิจารณาการเก็บ session และการหมดอายุของ session
-
-### 3. ทำหน้า “จัดสรรบริการ” ให้ครบ
-
-ความต้องการเดิมคือบางรายการมีเงินรวมมา แต่ไม่บอกว่าเป็นบริการใด เช่น ตรวจหลังคลอด + ตรวจฟัน
-
-ควรสร้าง allocation ledger ที่มีอย่างน้อย:
-
-| รหัสรายการ | ประเภทเงิน | บริการ | จำนวนเงิน | หมายเหตุ | ผู้บันทึก | เวลา |
-| --- | --- | --- | ---: | --- | --- | --- |
-
-และต้องแสดงยอดคงเหลือ PP / FS ต่อรายการ พร้อมเตือนเมื่อจัดสรรเกินยอด
-
-### 4. การเก็บข้อมูลถาวร
-
-HF Space storage ปกติไม่ควรถือว่าเก็บไฟล์ upload หรือ allocation ledger ได้ถาวร
-
-ตัวเลือก:
-
-- ระยะสั้น: export/import allocation ledger เป็น CSV
-- ระยะใช้งานจริง: ใช้ฐานข้อมูลภายนอกที่มีสิทธิ์เข้าถึงและ backup เช่น Supabase/Postgres
-- ห้ามเก็บข้อมูลส่วนบุคคลลง GitHub repository
+- Render free instance **sleep เมื่อไม่มีคนใช้งาน** และ cold start ใช้เวลา ~30-60 วิ (ปกติ ไม่ใช่บั๊ก)
+- Supabase free tier ก็มีนโยบาย pause โปรเจกต์ที่ไม่ได้ใช้งานนานเกิน 1 สัปดาห์เช่นกัน ควรเข้าใช้งานเป็นระยะ หรือพิจารณาอัปเกรดถ้าจะใช้งานจริงจัง
 
 ## คำสั่ง Git ที่เคยใช้
 
 ```powershell
 git status --short
-git add app.py requirements.txt README.md .gitignore
+git add app.py db.py requirements.txt
 git commit -m "..."
 git push origin main
-git push hf main
 ```
 
 ไฟล์รายงานยังขึ้นเป็น untracked เช่น:
@@ -148,9 +119,3 @@ git push hf main
 ```
 
 ให้ปล่อยไว้แบบนี้ และอย่าใช้ `git add .` เพราะจะเสี่ยง upload ข้อมูลจริง
-
-## หมายเหตุการพัฒนา
-
-- รุ่นแรกเริ่มจาก Streamlit แต่ถูกย้ายเป็น Gradio เพราะตัวเลือก Docker ในหน้า HF ของผู้ใช้เป็นแบบเสียเงิน
-- ปัจจุบัน `README.md` กำหนด `sdk: gradio`, `sdk_version: 6.22.0`, `python_version: '3.12'`, `app_file: app.py`
-- หากแก้โค้ดเสร็จ ให้ push ทั้ง GitHub และ HF เพื่อให้ทั้งสองที่ตรงกัน

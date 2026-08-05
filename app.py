@@ -17,95 +17,168 @@ ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().low
 
 NAVY = gr.themes.Color(
     name="navy",
-    c50="#eef2f8", c100="#d7e0ee", c200="#b0c2dd", c300="#88a3cb",
-    c400="#5c7fb0", c500="#0f3d68", c600="#0c3255", c700="#0a2844",
-    c800="#071d33", c900="#051422", c950="#030d16",
+    c50="#eaf0f7", c100="#cdddec", c200="#a3c1db", c300="#6f9bc4",
+    c400="#3f74a6", c500="#1f4e79", c600="#153a5c", c700="#102c46",
+    c800="#0b2036", c900="#081727", c950="#050f1a",
 )
 GOLD = gr.themes.Color(
     name="gold",
-    c50="#fdf8ec", c100="#faf0d3", c200="#f3dfa0", c300="#eccd6c",
-    c400="#dcb041", c500="#c9a227", c600="#a8841e", c700="#846617",
-    c800="#5f4a10", c900="#3d2f0a", c950="#241b05",
+    c50="#fbf7ec", c100="#f3e8c8", c200="#e8d296", c300="#d9b968",
+    c400="#c9a24a", c500="#b8912f", c600="#9a7825", c700="#7a5f1e",
+    c800="#5c4818", c900="#403212", c950="#26200b",
 )
 
 THEME = gr.themes.Soft(
     primary_hue=NAVY,
     secondary_hue=GOLD,
     neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Sarabun"), "sans-serif"],
+    font=[gr.themes.GoogleFont("Sarabun"), gr.themes.GoogleFont("Noto Sans Thai"), "sans-serif"],
 )
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+
+:root {
+    --oppp-navy: #0d2c4e;
+    --oppp-navy-dark: #081b31;
+    --oppp-navy-light: #1f4e79;
+    --oppp-gold: #b8912f;
+    --oppp-bg: #eef1f5;
+    --oppp-surface: #ffffff;
+    --oppp-border: #d7dde4;
+    --oppp-text: #14213a;
+    --oppp-text-dim: #5b677c;
+    --oppp-shadow: 0 1px 3px rgba(13, 44, 78, 0.08), 0 1px 2px rgba(13, 44, 78, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --oppp-navy: #0d2c4e;
+        --oppp-navy-dark: #081b31;
+        --oppp-navy-light: #2a5d8c;
+        --oppp-bg: #0b1420;
+        --oppp-surface: #101c2c;
+        --oppp-border: #223347;
+        --oppp-text: #e7ecf3;
+        --oppp-text-dim: #94a3b8;
+        --oppp-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    }
+}
 
 .gradio-container, .gradio-container * {
     font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
 }
-.gradio-container { background: #f2f4f8 !important; }
+.gradio-container {
+    background: var(--oppp-bg) !important;
+}
 
+/* ---------- Header ---------- */
 .oppp-header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 18px;
-    background: linear-gradient(135deg, #0a2844 0%, #0f3d68 55%, #0c3255 100%);
+    background: linear-gradient(180deg, var(--oppp-navy) 0%, var(--oppp-navy-dark) 100%);
     color: #ffffff;
-    padding: 26px 30px;
+    padding: 26px 32px;
     border-radius: 6px;
-    border-bottom: 4px solid #c9a227;
-    margin-bottom: 20px;
-    box-shadow: 0 10px 28px rgba(10, 40, 68, 0.25);
+    margin-bottom: 22px;
+    border-bottom: 4px solid var(--oppp-gold);
+    box-shadow: var(--oppp-shadow);
 }
-.oppp-header .icon { font-size: 2.6rem; line-height: 1; color: #e8c766; }
-.oppp-header h1 { margin: 0; font-size: 1.55rem; font-weight: 800; letter-spacing: 0.2px; }
-.oppp-header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+.oppp-header .icon {
+    font-size: 2.2rem;
+    line-height: 1;
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.35);
+    flex-shrink: 0;
+}
+.oppp-header h1 {
+    margin: 0; font-size: 1.45rem; font-weight: 700; letter-spacing: 0.2px;
+}
+.oppp-header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.85rem; }
 .oppp-header .badge {
     margin-left: auto;
     text-align: right;
     font-size: 0.78rem;
-    opacity: 0.85;
+    opacity: 0.9;
     line-height: 1.5;
 }
 
+/* ---------- Section titles ---------- */
 .section-title h3 {
-    font-size: 1.05rem !important;
+    display: inline-flex;
+    align-items: center;
+    font-size: 1rem !important;
     font-weight: 700 !important;
-    color: #0a2844 !important;
-    border-bottom: 2px solid #c9a227 !important;
-    padding-bottom: 6px !important;
-    margin-bottom: 4px !important;
+    color: var(--oppp-navy) !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 12px !important;
+    border-bottom: 2px solid var(--oppp-gold) !important;
+}
+@media (prefers-color-scheme: dark) {
+    .section-title h3 { color: #dbe4ef !important; }
 }
 
+/* ---------- Cards ---------- */
 .card {
-    background: #ffffff !important;
-    border: 1px solid #dde3ea !important;
-    border-radius: 10px !important;
-    padding: 18px 20px !important;
-    box-shadow: 0 2px 8px rgba(10, 40, 68, 0.05);
-    margin-bottom: 16px !important;
+    background: var(--oppp-surface) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-top: 3px solid var(--oppp-navy) !important;
+    border-radius: 8px !important;
+    padding: 20px 22px !important;
+    box-shadow: var(--oppp-shadow);
+    margin-bottom: 18px !important;
 }
-.dev-card { border-left: 4px solid #c9a227 !important; }
+.dev-card { border-top: 3px solid var(--oppp-gold) !important; }
 
-.kpi-row { gap: 14px !important; margin-bottom: 16px !important; }
+/* ---------- KPI cards ---------- */
+.kpi-row { gap: 16px !important; margin-bottom: 16px !important; }
 .kpi-card {
-    border-radius: 10px !important;
-    padding: 4px 10px !important;
-    border-left: 4px solid #0f3d68 !important;
-    box-shadow: 0 2px 8px rgba(10, 40, 68, 0.06);
-    background: #ffffff !important;
+    position: relative;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    background: var(--oppp-surface) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-left: 4px solid var(--oppp-navy) !important;
+    box-shadow: var(--oppp-shadow);
 }
-.kpi-card.gold { border-left-color: #c9a227 !important; }
+.kpi-card.gold { border-left: 4px solid var(--oppp-gold) !important; }
+.kpi-card label span { color: var(--oppp-text-dim) !important; font-weight: 600 !important; }
 .kpi-card textarea, .kpi-card input {
     font-size: 1.35rem !important;
-    font-weight: 800 !important;
-    color: #0a2844 !important;
+    font-weight: 700 !important;
+    color: var(--oppp-navy) !important;
+    background: transparent !important;
+}
+@media (prefers-color-scheme: dark) {
+    .kpi-card textarea, .kpi-card input { color: #e7ecf3 !important; }
 }
 
+/* ---------- Misc ---------- */
 .admin-toggle { max-width: 340px; margin: 0 0 10px auto !important; }
-.admin-toggle .label-wrap span { font-size: 0.8rem !important; color: #64748b !important; }
+.admin-toggle .label-wrap {
+    background: var(--oppp-surface) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-radius: 6px !important;
+}
+.admin-toggle .label-wrap span { font-size: 0.8rem !important; color: var(--oppp-text-dim) !important; }
 
 .login-status { font-weight: 600 !important; font-size: 0.85rem !important; }
-.hint-text { color: #b45309 !important; font-size: 0.85rem !important; }
-.footer-note { text-align: center !important; color: #94a3b8 !important; font-size: 0.8rem !important; margin-top: 16px !important; }
+.hint-text { color: var(--oppp-navy-light) !important; font-size: 0.85rem !important; }
+.footer-note { text-align: center !important; color: var(--oppp-text-dim) !important; font-size: 0.8rem !important; margin-top: 18px !important; opacity: 0.8; }
+
+/* Buttons */
+button.primary, .gr-button-primary {
+    background: var(--oppp-navy) !important;
+    border: none !important;
+    box-shadow: var(--oppp-shadow) !important;
+}
+button.primary:hover, .gr-button-primary:hover {
+    background: var(--oppp-navy-light) !important;
+}
 """
 
 
