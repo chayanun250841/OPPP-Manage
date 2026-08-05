@@ -1,6 +1,7 @@
 """OPPP compensation dashboard: public executive view + hidden developer console."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import re
@@ -15,51 +16,70 @@ import db
 ADMIN_USERNAME = os.environ.get("OPPP_ADMIN_USERNAME", "").strip()
 ADMIN_PASSWORD_HASH = os.environ.get("OPPP_ADMIN_PASSWORD_HASH", "").strip().lower()
 
-NAVY = gr.themes.Color(
-    name="navy",
-    c50="#eaf0f7", c100="#cdddec", c200="#a3c1db", c300="#6f9bc4",
-    c400="#3f74a6", c500="#1f4e79", c600="#153a5c", c700="#102c46",
-    c800="#0b2036", c900="#081727", c950="#050f1a",
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "ตรากระทรวงสาธารณสุขใหม่.png")
+
+
+def load_logo_data_uri(path: str) -> str:
+    try:
+        with open(path, "rb") as file:
+            encoded = base64.b64encode(file.read()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    except OSError:
+        return ""
+
+
+LOGO_DATA_URI = load_logo_data_uri(LOGO_PATH)
+
+TERMINAL_GREEN = gr.themes.Color(
+    name="terminal_green",
+    c50="#e8fbf1", c100="#c3f5da", c200="#8fe9b9", c300="#5cdd9a",
+    c400="#2fd47a", c500="#22b866", c600="#189454", c700="#127140",
+    c800="#0c4c2c", c900="#06301b", c950="#03190d",
 )
-GOLD = gr.themes.Color(
-    name="gold",
-    c50="#fbf7ec", c100="#f3e8c8", c200="#e8d296", c300="#d9b968",
-    c400="#c9a24a", c500="#b8912f", c600="#9a7825", c700="#7a5f1e",
-    c800="#5c4818", c900="#403212", c950="#26200b",
+TERMINAL_DARK = gr.themes.Color(
+    name="terminal_dark",
+    c50="#cdd8d2", c100="#a9bdb1", c200="#6a9a80", c300="#3f5f4d",
+    c400="#25392d", c500="#17281f", c600="#111d17", c700="#0d1712",
+    c800="#0a1017", c900="#06080b", c950="#020304",
 )
 
 THEME = gr.themes.Soft(
-    primary_hue=NAVY,
-    secondary_hue=GOLD,
+    primary_hue=TERMINAL_GREEN,
+    secondary_hue=TERMINAL_DARK,
     neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Sarabun"), gr.themes.GoogleFont("Noto Sans Thai"), "sans-serif"],
+    font=[
+        "ui-monospace", "Cascadia Code", "JetBrains Mono", "SF Mono",
+        "Menlo", "Consolas", gr.themes.GoogleFont("Sarabun"), "monospace",
+    ],
 )
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root, .dark, .gradio-container.dark {
-    --oppp-navy: #0d2c4e;
-    --oppp-navy-dark: #081b31;
-    --oppp-navy-light: #1f4e79;
-    --oppp-gold: #b8912f;
-    --oppp-bg: #eef1f5;
-    --oppp-surface: #ffffff;
-    --oppp-border: #d7dde4;
-    --oppp-text: #14213a;
-    --oppp-text-dim: #5b677c;
-    --oppp-shadow: 0 1px 3px rgba(13, 44, 78, 0.08), 0 1px 2px rgba(13, 44, 78, 0.06);
+    --oppp-bg: #06080b;
+    --oppp-panel: #0a1017;
+    --oppp-panel-alt: #0d1712;
+    --oppp-input: #0a0f0c;
+    --oppp-border: #17281f;
+    --oppp-text: #cdd8d2;
+    --oppp-text-dim: #6a9a80;
+    --oppp-accent: #2fd47a;
+    --oppp-accent-dark: #189454;
+    --oppp-accent-text: #032312;
+    --oppp-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Force the light navy/white look regardless of the visitor's OS/browser
-   dark-mode preference -- Gradio's built-in dark skin otherwise overrides
+/* Force the dark terminal look regardless of the visitor's OS/browser
+   color-scheme preference -- Gradio's built-in skin otherwise overrides
    input/textarea backgrounds independently of the vars above. */
 .gradio-container, .gradio-container * {
-    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
+    font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Sarabun', 'Noto Sans Thai', monospace !important;
 }
 .gradio-container, .gradio-container.dark {
     background: var(--oppp-bg) !important;
-    color-scheme: light !important;
+    color: var(--oppp-text) !important;
+    color-scheme: dark !important;
 }
 .gradio-container input,
 .gradio-container textarea,
@@ -67,8 +87,17 @@ CUSTOM_CSS = """
 .gradio-container .block,
 .gradio-container .form,
 .gradio-container .wrap {
-    background: var(--oppp-surface);
+    background: var(--oppp-panel);
     color: var(--oppp-text);
+}
+/* Gradio's label badge defaults to a primary-hue (green) fill, producing
+   low-contrast green-on-green text -- force a dark badge everywhere. */
+.gradio-container span[data-testid="block-info"] {
+    background: var(--oppp-panel-alt) !important;
+    color: var(--oppp-text-dim) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-radius: 4px !important;
+    padding: 2px 8px !important;
 }
 
 /* ---------- Header ---------- */
@@ -77,32 +106,39 @@ CUSTOM_CSS = """
     display: flex;
     align-items: center;
     gap: 18px;
-    background: linear-gradient(180deg, var(--oppp-navy) 0%, var(--oppp-navy-dark) 100%);
-    color: #ffffff;
-    padding: 26px 32px;
+    background: var(--oppp-panel);
+    color: var(--oppp-text);
+    padding: 24px 30px;
     border-radius: 6px;
     margin-bottom: 22px;
-    border-bottom: 4px solid var(--oppp-gold);
+    border: 1px solid var(--oppp-border);
+    border-left: 4px solid var(--oppp-accent);
     box-shadow: var(--oppp-shadow);
 }
 .oppp-header .icon {
-    font-size: 2.2rem;
+    font-size: 2rem;
     line-height: 1;
-    width: 56px; height: 56px;
+    width: 52px; height: 52px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255, 255, 255, 0.10);
+    background: rgba(47, 212, 122, 0.10);
     border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.35);
+    border: 1px solid rgba(47, 212, 122, 0.35);
     flex-shrink: 0;
+    overflow: hidden;
+}
+.oppp-header .icon img {
+    width: 100%; height: 100%;
+    object-fit: contain;
 }
 .oppp-header h1 {
-    margin: 0; font-size: 1.45rem; font-weight: 700; letter-spacing: 0.2px;
+    margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.2px;
+    color: var(--oppp-accent);
 }
-.oppp-header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.85rem; }
+.oppp-header p { margin: 4px 0 0; opacity: 0.8; font-size: 0.82rem; color: var(--oppp-text-dim); }
 .oppp-header .badge {
     margin-left: auto;
     text-align: right;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     opacity: 0.9;
     line-height: 1.5;
 }
@@ -111,25 +147,26 @@ CUSTOM_CSS = """
 .section-title h3 {
     display: inline-flex;
     align-items: center;
-    font-size: 1rem !important;
+    font-size: 0.92rem !important;
     font-weight: 700 !important;
-    color: var(--oppp-navy) !important;
+    color: var(--oppp-accent) !important;
     padding-bottom: 8px !important;
     margin-bottom: 12px !important;
-    border-bottom: 2px solid var(--oppp-gold) !important;
+    border-bottom: 1px solid var(--oppp-border) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
 /* ---------- Cards ---------- */
 .card {
-    background: var(--oppp-surface) !important;
+    background: var(--oppp-panel) !important;
     border: 1px solid var(--oppp-border) !important;
-    border-top: 3px solid var(--oppp-navy) !important;
     border-radius: 8px !important;
     padding: 20px 22px !important;
     box-shadow: var(--oppp-shadow);
     margin-bottom: 18px !important;
 }
-.dev-card { border-top: 3px solid var(--oppp-gold) !important; }
+.dev-card { border-left: 3px solid var(--oppp-accent) !important; }
 
 /* ---------- KPI cards ---------- */
 .kpi-row { gap: 16px !important; margin-bottom: 16px !important; }
@@ -137,46 +174,68 @@ CUSTOM_CSS = """
     position: relative;
     border-radius: 8px !important;
     padding: 8px 16px !important;
-    background: var(--oppp-surface) !important;
+    background: var(--oppp-panel) !important;
     border: 1px solid var(--oppp-border) !important;
-    border-left: 4px solid var(--oppp-navy) !important;
+    border-left: 3px solid var(--oppp-accent) !important;
     box-shadow: var(--oppp-shadow);
 }
-.kpi-card.gold { border-left: 4px solid var(--oppp-gold) !important; }
-.kpi-card label span { color: var(--oppp-text-dim) !important; font-weight: 600 !important; }
+.kpi-card.gold { border-left: 3px solid var(--oppp-text-dim) !important; }
 .kpi-card .wrap, .kpi-card .block, .kpi-card .form {
     background: transparent !important;
 }
+.kpi-card label span[data-testid="block-info"] {
+    background: var(--oppp-panel-alt) !important;
+    color: var(--oppp-text) !important;
+    font-weight: 600 !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    border: 1px solid var(--oppp-border) !important;
+}
 .kpi-card textarea, .kpi-card input {
-    font-size: 1.35rem !important;
+    font-size: 1.3rem !important;
     font-weight: 700 !important;
-    color: var(--oppp-navy) !important;
+    color: var(--oppp-accent) !important;
     background: transparent !important;
-    -webkit-text-fill-color: var(--oppp-navy) !important;
+    -webkit-text-fill-color: var(--oppp-accent) !important;
 }
 
 /* ---------- Misc ---------- */
 .admin-toggle { max-width: 340px; margin: 0 0 10px auto !important; }
 .admin-toggle .label-wrap {
-    background: var(--oppp-surface) !important;
+    background: var(--oppp-panel) !important;
     border: 1px solid var(--oppp-border) !important;
     border-radius: 6px !important;
 }
-.admin-toggle .label-wrap span { font-size: 0.8rem !important; color: var(--oppp-text-dim) !important; }
+.admin-toggle .label-wrap span { font-size: 0.78rem !important; color: var(--oppp-text-dim) !important; }
 
-.login-status { font-weight: 600 !important; font-size: 0.85rem !important; }
-.hint-text { color: var(--oppp-navy-light) !important; font-size: 0.85rem !important; }
-.footer-note { text-align: center !important; color: var(--oppp-text-dim) !important; font-size: 0.8rem !important; margin-top: 18px !important; opacity: 0.8; }
+.login-status { font-weight: 600 !important; font-size: 0.85rem !important; color: var(--oppp-text) !important; }
+.hint-text { color: var(--oppp-text-dim) !important; font-size: 0.82rem !important; }
+.footer-note { text-align: center !important; color: var(--oppp-text-dim) !important; font-size: 0.78rem !important; margin-top: 18px !important; opacity: 0.8; }
 
 /* Buttons */
 button.primary, .gr-button-primary {
-    background: var(--oppp-navy) !important;
+    background: var(--oppp-accent) !important;
+    color: var(--oppp-accent-text) !important;
     border: none !important;
     box-shadow: var(--oppp-shadow) !important;
+    font-weight: 700 !important;
 }
 button.primary:hover, .gr-button-primary:hover {
-    background: var(--oppp-navy-light) !important;
+    background: var(--oppp-accent-dark) !important;
 }
+button:not(.primary) {
+    background: var(--oppp-panel-alt) !important;
+    color: var(--oppp-text) !important;
+    border: 1px solid var(--oppp-border) !important;
+}
+
+/* ---------- Tables / plots ---------- */
+table, thead, tbody, tr, td, th {
+    background: var(--oppp-panel) !important;
+    color: var(--oppp-text) !important;
+    border-color: var(--oppp-border) !important;
+}
+thead th { color: var(--oppp-accent) !important; }
 """
 
 
@@ -282,19 +341,16 @@ def toggle_admin(role: str):
 # Executive dashboard (public, no login required)
 # ---------------------------------------------------------------------------
 
-TREND_COLUMNS = ["รอบรายงาน", "PP", "FS", "ยอดรวม"]
 RANKING_COLUMNS = ["HCODE", "รายการ", "PP", "FS", "ยอดรวม"]
 
 
 def refresh_dashboard():
     try:
         totals = db.get_overall_totals()
-        trend = db.get_monthly_trend()
         ranking = db.get_summary_by_hcode()
         error = None
     except Exception as exc:  # noqa: BLE001 - surface any DB issue to the UI instead of crashing
         totals = {}
-        trend = pd.DataFrame(columns=TREND_COLUMNS)
         ranking = pd.DataFrame(columns=RANKING_COLUMNS)
         error = str(exc)
 
@@ -313,7 +369,6 @@ def refresh_dashboard():
         f"{count:,} รายการ",
         f"{int(totals.get('hcode_count') or 0):,} แห่ง",
         str(totals.get("latest_period") or "-"),
-        trend,
         top10,
         ranking,
         updated,
@@ -473,10 +528,15 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             logout_btn = gr.Button("ออกจากระบบ", scale=1)
         login_status = gr.Markdown(elem_classes="login-status")
 
+    _header_icon = (
+        f'<img src="{LOGO_DATA_URI}" alt="กระทรวงสาธารณสุข" />'
+        if LOGO_DATA_URI
+        else "🏛️"
+    )
     gr.HTML(
-        """
+        f"""
         <div class="oppp-header">
-            <div class="icon">🏛️</div>
+            <div class="icon">{_header_icon}</div>
             <div>
                 <h1>ระบบติดตามเงินชดเชย OPPP</h1>
                 <p>สรุปยอด PP และ FS ตามหน่วยบริการ HCODE 5 หลัก — ภาพรวมผลการดำเนินงานสะสม</p>
@@ -503,14 +563,6 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             kpi_latest = gr.Textbox(label="📅 รอบข้อมูลล่าสุด", interactive=False)
 
     with gr.Group(elem_classes="card"):
-        gr.Markdown("### 📈 แนวโน้มยอดชดเชยรายรอบ", elem_classes="section-title")
-        trend_plot = gr.LinePlot(
-            value=pd.DataFrame(columns=TREND_COLUMNS),
-            x="รอบรายงาน", y="ยอดรวม",
-            title=None, height=280, show_label=False,
-        )
-
-    with gr.Group(elem_classes="card"):
         gr.Markdown("### 🏆 อันดับหน่วยบริการตามยอดชดเชย (Top 10)", elem_classes="section-title")
         top_hcode_plot = gr.BarPlot(
             value=pd.DataFrame(columns=RANKING_COLUMNS),
@@ -526,7 +578,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
 
     dashboard_outputs = [
         kpi_total, kpi_pp, kpi_fs, kpi_count, kpi_hcode, kpi_latest,
-        trend_plot, top_hcode_plot, ranking_table, updated_badge,
+        top_hcode_plot, ranking_table, updated_badge,
     ]
 
     # -----------------------------------------------------------------
