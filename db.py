@@ -175,6 +175,27 @@ def set_batch_status(batch_id: str, status: str) -> None:
         conn.commit()
 
 
+def reset_all_data() -> dict:
+    """ลบข้อมูลทั้งหมดออกจากระบบ กลับไปเป็นฐานว่างเหมือนเพิ่งติดตั้งใหม่
+
+    ต่างจาก rollback ตรงที่ rollback เป็น soft-delete (ข้อมูลยังอยู่ กู้คืนได้)
+    แต่ฟังก์ชันนี้ลบจริงทั้ง allocations, records และ upload_batches
+    **ย้อนกลับไม่ได้** ผู้เรียกต้องตรวจสิทธิ์ผู้ดูแลระบบและยืนยันรหัสผ่านก่อนเสมอ
+
+    Returns the row counts that were removed, so the UI can report what it did.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            counts = {}
+            for table in ("records", "upload_batches", "allocations"):
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                counts[table] = int(cur.fetchone()[0])
+            # ตารางเดียวกันหมดในคำสั่งเดียว เพื่อไม่ให้ FK ของ records ขวาง
+            cur.execute("TRUNCATE TABLE allocations, records, upload_batches RESTART IDENTITY")
+        conn.commit()
+    return counts
+
+
 def get_overall_totals() -> dict:
     query = """
         SELECT

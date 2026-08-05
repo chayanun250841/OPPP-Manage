@@ -650,6 +650,35 @@ def process_upload(files: list[str] | None, uploader: str):
     return "\n".join(lines)
 
 
+def reset_system(role: str, password: str):
+    """Wipe every uploaded record so a fresh set of files can be loaded.
+
+    Two independent gates, both required: the caller must already hold an admin
+    session, and must re-enter the admin password here. The session alone is not
+    enough -- this is irreversible, unlike the per-batch rollback next to it.
+    Returns (สถานะ, ล้างช่องรหัสผ่าน) so the password never lingers in the UI.
+    """
+    blank = gr.update(value="")
+    if role != "admin":
+        return "❌ ต้องเข้าสู่ระบบด้วยสิทธิ์ผู้ดูแลระบบก่อนจึงจะรีเซ็ตได้", blank
+    if not ADMIN_PASSWORD_HASH:
+        return "⚠️ เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า OPPP_ADMIN_PASSWORD_HASH จึงรีเซ็ตไม่ได้", blank
+    if not password or hash_password(password) != ADMIN_PASSWORD_HASH:
+        return "❌ รหัสผ่านไม่ถูกต้อง — ระบบไม่ได้ลบข้อมูลใดๆ", blank
+
+    try:
+        removed = db.reset_all_data()
+    except Exception as exc:  # noqa: BLE001
+        return f"❌ รีเซ็ตไม่สำเร็จ: {exc}", blank
+
+    return (
+        f"✅ รีเซ็ตระบบเรียบร้อยเมื่อ {datetime.now():%d/%m/%Y %H:%M:%S} น. — "
+        f"ลบรายการ {removed['records']:,} รายการ, ประวัติการอัปโหลด {removed['upload_batches']:,} ไฟล์, "
+        f"สมุดจัดสรร {removed['allocations']:,} รายการ · ตอนนี้ระบบว่างเปล่า พร้อมอัปโหลดไฟล์ใหม่แล้ว",
+        blank,
+    )
+
+
 def refresh_batches():
     try:
         batches = db.list_batches()
@@ -868,6 +897,23 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 restore_btn = gr.Button("♻️ กู้คืนไฟล์นี้")
             batch_status = gr.Markdown()
 
+        with gr.Group(elem_classes="card dev-card"):
+            gr.Markdown("### 🧨 รีเซ็ตระบบกลับเป็นค่าเริ่มต้น", elem_classes="section-title")
+            gr.Markdown(
+                "ลบข้อมูลที่อัปโหลดไว้**ทั้งหมด** (ทุกไฟล์ ทุกรอบ รวมถึงสมุดจัดสรรบริการ) "
+                "ให้ระบบว่างเปล่าเหมือนเพิ่งติดตั้งใหม่ เพื่อเริ่มอัปโหลดไฟล์ชุดใหม่\n\n"
+                "⚠️ **ย้อนกลับไม่ได้** — ต่างจากปุ่ม “ย้อนกลับไฟล์นี้” ด้านบนที่ยังกู้คืนได้ "
+                "ต้องมีสิทธิ์ผู้ดูแลระบบ **และ** กรอกรหัสผ่านยืนยันอีกครั้งจึงจะทำงาน",
+                elem_classes="hint-text",
+            )
+            reset_password = gr.Textbox(
+                label="ยืนยันรหัสผ่านผู้ดูแลระบบ",
+                type="password",
+                placeholder="กรอกรหัสผ่านเดิมอีกครั้งเพื่อยืนยัน",
+            )
+            reset_btn = gr.Button("🧨 ยืนยันรีเซ็ตระบบทั้งหมด", variant="stop")
+            reset_status = gr.Markdown()
+
         with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล"):
             people_table = gr.Dataframe(interactive=False, wrap=True)
             people_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
@@ -1000,6 +1046,16 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     )
 
     rollback_btn.click(rollback_selected, inputs=batch_dropdown, outputs=batch_status).then(
+        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    ).then(refresh_dashboard, outputs=dashboard_outputs).then(
+        build_amount_frequency, outputs=frequency_outputs
+    ).then(
+        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    )
+
+    reset_btn.click(
+        reset_system, inputs=[role_state, reset_password], outputs=[reset_status, reset_password]
+    ).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(refresh_dashboard, outputs=dashboard_outputs).then(
         build_amount_frequency, outputs=frequency_outputs
