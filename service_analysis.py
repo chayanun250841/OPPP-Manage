@@ -4,10 +4,12 @@ Follows this exact workflow:
   1. Group raw records by HCODE
   2. Each HCODE's people: PID, name, PP, FS
   3. Per record, predict service(s) from PP and FS separately using combo
-     matching against the 15-item provincial rate list
+     matching against the 15-item claim-rate list (rate_claim = full SPSC
+     schedule rate, which is what actually appears in the raw PP/FS amounts)
   4. Summarize predicted item counts for the facility
-  5. Two reconciliation tables: value at SPSC's full rate vs value actually
-     allocated per the provincial agreement
+  5. Reconciliation: value at SPSC's full rate (rate_claim) vs value actually
+     allocated to the facility per the provincial agreement
+     (rate_facility_share)
 
 Prediction runs on PP and FS separately (not combined into ยอดรวม) because the
 15 reference items are PP Fee schedule items -- mixing in FS would corrupt the
@@ -37,8 +39,11 @@ def _load_items() -> list[dict]:
 
 MATCHABLE_ITEMS = _load_items()
 ITEM_NAMES = [item["name"] for item in MATCHABLE_ITEMS]
-RATE_FULL_BY_NAME = {item["name"]: float(item["rate_full"]) for item in MATCHABLE_ITEMS}
-RATE_PROVINCIAL_BY_NAME = {item["name"]: float(item["rate"]) for item in MATCHABLE_ITEMS}
+RATE_FULL_BY_NAME = {item["name"]: float(item["rate_claim"]) for item in MATCHABLE_ITEMS}
+RATE_PROVINCIAL_BY_NAME = {
+    item["name"]: (float(item["rate_facility_share"]) if item.get("rate_facility_share") is not None else None)
+    for item in MATCHABLE_ITEMS
+}
 
 PEOPLE_COLUMNS = ["HCODE", "PID", "ชื่อ-นามสกุล", "PP", "FS", "ยอดรวม"]
 PREDICTION_COLUMNS = ["PID", "ชื่อ-นามสกุล", "PP", "FS", "บริการที่คาดการณ์ (PP)", "บริการที่คาดการณ์ (FS)", "สถานะ"]
@@ -133,7 +138,7 @@ def build_reconciliation(counts: pd.DataFrame) -> pd.DataFrame:
         count = int(rec["จำนวนครั้ง"])
         rate_full = RATE_FULL_BY_NAME.get(name)
         rate_provincial = RATE_PROVINCIAL_BY_NAME.get(name)
-        if rate_full is None or rate_provincial is None:
+        if rate_full is None:
             rows.append({
                 "รายการบริการ": name, "จำนวนครั้ง": f"{count:,}",
                 "อัตราเต็ม สปสช. (บาท/ครั้ง)": "-", "ยอดที่สปสช.ชดเชย (บาท)": "-",
@@ -141,8 +146,17 @@ def build_reconciliation(counts: pd.DataFrame) -> pd.DataFrame:
             })
             continue
         full_value = count * rate_full
-        provincial_value = count * rate_provincial
         total_full += full_value
+        if rate_provincial is None:
+            rows.append({
+                "รายการบริการ": name, "จำนวนครั้ง": f"{count:,}",
+                "อัตราเต็ม สปสช. (บาท/ครั้ง)": f"{rate_full:,.2f}",
+                "ยอดที่สปสช.ชดเชย (บาท)": f"{full_value:,.2f}",
+                "อัตราจังหวัด (บาท/ครั้ง)": "ยังไม่ยืนยัน",
+                "ยอดที่ได้รับจัดสรรจริง (บาท)": "ยังไม่ยืนยัน",
+            })
+            continue
+        provincial_value = count * rate_provincial
         total_provincial += provincial_value
         rows.append({
             "รายการบริการ": name, "จำนวนครั้ง": f"{count:,}",
@@ -190,3 +204,71 @@ def analyze_hcode(hcode: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
         counts,
         reconciliation,
     )
+
+
+# ---------------------------------------------------------------------------
+# All-facilities pivot: the final destination view, one row per facility,
+# replacing the manual "PP free Schedule" spreadsheet staff fill out today.
+# ---------------------------------------------------------------------------
+
+TOTAL_ROW_LABEL = "รวมทั้งหมด"
+
+
+def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
+    try:
+        totals_by_hcode = db.get_summary_by_hcode()
+    except Exception:  # noqa: BLE001
+        return pd.DataFrame()
+    if totals_by_hcode.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for rec in totals_by_hcode.to_dict(orient="records"):
+        hcode = str(rec["HCODE"])
+        facility_total = float(rec["ยอดรวม"])
+
+        people = get_people_for_hcode(hcode)
+        predictions = predict_records(people)
+        counts = summarize_item_counts(predictions)
+        count_by_item = {c["รายการบริการ"]: int(c["จำนวนครั้ง"]) for c in counts.to_dict(orient="records")}
+
+        row: dict[str, object] = {"HCODE": hcode, "ชื่อหน่วยบริการ": hcode_names.get(hcode, "")}
+        matched_claim_total = 0.0
+        matched_share_total = 0.0
+        for item in MATCHABLE_ITEMS:
+            name = item["name"]
+            count = count_by_item.get(name, 0)
+            claim_amount = count * item["rate_claim"]
+            share_rate = item.get("rate_facility_share")
+            share_amount = count * share_rate if share_rate is not None else 0.0
+            row[f"{name} ครั้ง"] = count
+            row[f"{name} บาท"] = claim_amount
+            matched_claim_total += claim_amount
+            matched_share_total += share_amount
+
+        row["ยอดที่ยังไม่จัดประเภท (บาท)"] = round(facility_total - matched_claim_total, 2)
+        row["รวมจาก สปสช. (บาท)"] = round(facility_total, 2)
+        row["รวมจัดสรรตามมติจังหวัด (บาท)"] = round(matched_share_total, 2)
+        rows.append(row)
+
+    pivot = pd.DataFrame(rows)
+    numeric_cols = [c for c in pivot.columns if c not in ("HCODE", "ชื่อหน่วยบริการ")]
+    total_row: dict[str, object] = {"HCODE": TOTAL_ROW_LABEL, "ชื่อหน่วยบริการ": ""}
+    for col in numeric_cols:
+        total_row[col] = pivot[col].sum()
+    pivot = pd.concat([pivot, pd.DataFrame([total_row])], ignore_index=True)
+    return pivot
+
+
+def format_all_facilities_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
+    if pivot.empty:
+        return pivot
+    display = pivot.copy()
+    for col in display.columns:
+        if col in ("HCODE", "ชื่อหน่วยบริการ"):
+            continue
+        if col.endswith("ครั้ง"):
+            display[col] = display[col].map(lambda v: f"{int(v):,}")
+        else:
+            display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
+    return display

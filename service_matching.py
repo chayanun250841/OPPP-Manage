@@ -1,4 +1,11 @@
-"""Match a claimed PP/FS amount against the known provincial-agreement service rates."""
+"""Match a claimed PP/FS amount against the known service claim rates.
+
+Matches against `rate_claim` (the full SPSC schedule rate) -- that is what
+actually appears in the raw PP/FS amounts recorded in the uploaded reports.
+`rate_facility_share` (the discounted provincial-agreement amount) is a
+downstream allocation and must never be used for matching -- see
+service_analysis.py's reconciliation step for where that belongs.
+"""
 from __future__ import annotations
 
 import json
@@ -18,9 +25,9 @@ def _load_rate_index() -> dict[float, list[str]]:
 
     index: dict[float, list[str]] = defaultdict(list)
     for item in data.get("items", []):
-        if not item.get("matchable") or item.get("rate") is None:
+        if not item.get("matchable") or item.get("rate_claim") is None:
             continue
-        rate = round(float(item["rate"]), 2)
+        rate = round(float(item["rate_claim"]), 2)
         if rate <= 0:
             continue
         index[rate].append(item["name"])
@@ -62,8 +69,16 @@ _MAX_COMBO_RESULTS = 6
 
 def _rate_combinations(amount: float, max_items: int = _MAX_COMBO_ITEMS) -> list[list[float]]:
     """Non-decreasing combinations of known rates (repetition allowed) summing to
-    `amount`. Tries depth 1 first and stops at the first depth with any match, so
-    the simplest explanation is always preferred over a more convoluted bundle."""
+    `amount`. Tries depth 1 first and stops at the first depth with any match,
+    so the simplest explanation (fewest total items) always wins.
+
+    Known limitation: a bundle of 3 of the same per-unit item (e.g. 3 packs
+    of one contraceptive pill) can lose out to an unrelated but shorter
+    2-item combo that happens to sum to the same amount -- both are equally
+    plausible real visits, and there is no reliable way to prefer one without
+    more context. Such cases surface as 🟡 ambiguous (or occasionally miss the
+    true explanation from the candidate list); a human confirms via the
+    manual "จัดสรรบริการ" tab either way, so nothing false is ever asserted."""
     rates = sorted(RATE_INDEX.keys())
     if amount is None or amount <= 0 or not rates:
         return []

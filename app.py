@@ -505,6 +505,17 @@ def analyze_facility_ui(hcode_choice: str | None):
         return empty
 
 
+def build_all_facilities_summary():
+    try:
+        pivot = service_analysis.build_all_facilities_pivot(HCODE_NAMES)
+    except Exception as exc:  # noqa: BLE001
+        return pd.DataFrame(), f"⚠️ สรุปไม่สำเร็จ: {exc}"
+    if pivot.empty:
+        return pd.DataFrame(), "ไม่มีข้อมูล"
+    updated = f"🟢 คำนวณล่าสุด {datetime.now():%d/%m/%Y %H:%M:%S} น."
+    return service_analysis.format_all_facilities_pivot(pivot), updated
+
+
 # ---------------------------------------------------------------------------
 # Developer console (hidden, admin-only)
 # ---------------------------------------------------------------------------
@@ -782,6 +793,17 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             gr.Markdown("#### 4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", elem_classes="section-title")
             facility_reconcile_table = gr.Dataframe(interactive=False)
 
+        with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
+            gr.Markdown(
+                "ตารางสรุปทุกหน่วยบริการพร้อมกันในหน้าเดียว — แทนที่สเปรดชีตที่เจ้าหน้าที่ต้องนั่งกรอกเอง "
+                "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢) "
+                "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง — กดคำนวณใหม่หลังอัปโหลดข้อมูลเพิ่ม",
+                elem_classes="hint-text",
+            )
+            summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
+            summary_status = gr.Markdown()
+            all_facilities_table = gr.Dataframe(interactive=False)
+
         with gr.Tab("🧮 จัดสรรบริการ"):
             gr.Markdown(
                 "จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน "
@@ -822,6 +844,11 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         analyze_facility_ui,
         inputs=facility_dropdown,
         outputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
+    )
+
+    summary_refresh_btn.click(
+        build_all_facilities_summary,
+        outputs=[all_facilities_table, summary_status],
     )
 
     login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]).then(
