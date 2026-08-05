@@ -225,6 +225,25 @@ def get_records_for_hcode(hcode: str) -> pd.DataFrame:
         return pd.read_sql(query, conn, params=(hcode,))
 
 
+def get_people_records_for_hcode(hcode: str) -> pd.DataFrame:
+    """Per-person records for one facility, including PID/name -- admin only."""
+    query = """
+        SELECT
+            r.hcode AS "HCODE",
+            r.pid AS "PID",
+            r.full_name AS "ชื่อ-นามสกุล",
+            r.pp AS "PP",
+            r.fs AS "FS",
+            r.total AS "ยอดรวม"
+        FROM records r
+        JOIN upload_batches b ON b.batch_id = r.batch_id
+        WHERE b.status = 'active' AND r.hcode = %s
+        ORDER BY r.full_name NULLS LAST, r.pid
+    """
+    with get_connection() as conn:
+        return pd.read_sql(query, conn, params=(hcode,))
+
+
 def get_allocations_for_hcode(hcode: str) -> pd.DataFrame:
     query = """
         SELECT a.record_code, a.money_type, a.service, a.amount

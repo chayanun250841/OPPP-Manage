@@ -14,6 +14,7 @@ import gradio as gr
 import pandas as pd
 
 import db
+import service_analysis
 import service_matching
 
 ADMIN_USERNAME = os.environ.get("OPPP_ADMIN_USERNAME", "").strip()
@@ -484,6 +485,27 @@ def on_select_facility(evt: gr.SelectData):
 
 
 # ---------------------------------------------------------------------------
+# Facility service-reconciliation pipeline (admin only -- has PID/name)
+# ---------------------------------------------------------------------------
+
+
+def analyze_facility_ui(hcode_choice: str | None):
+    empty = (
+        pd.DataFrame(columns=service_analysis.PEOPLE_COLUMNS),
+        pd.DataFrame(columns=service_analysis.PREDICTION_COLUMNS),
+        pd.DataFrame(columns=service_analysis.COUNT_COLUMNS),
+        pd.DataFrame(columns=service_analysis.RECONCILE_COLUMNS),
+    )
+    if not hcode_choice:
+        return empty
+    code = hcode_choice.split(" ", 1)[0].strip()
+    try:
+        return service_analysis.analyze_hcode(code)
+    except Exception:  # noqa: BLE001
+        return empty
+
+
+# ---------------------------------------------------------------------------
 # Developer console (hidden, admin-only)
 # ---------------------------------------------------------------------------
 
@@ -735,6 +757,31 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             raw_table = gr.Dataframe(interactive=False)
             raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
 
+        with gr.Tab("📊 วิเคราะห์รายบริการ"):
+            gr.Markdown(
+                "เลือกหน่วยบริการเพื่อไล่ดูทีละขั้น: 1) รายชื่อผู้รับบริการ 2) คาดการณ์บริการรายคน "
+                "(รวมหลายรายการเข้าด้วยกันจนตรงยอด) 3) สรุปจำนวนรายการทั้ง 15 รายการของหน่วยนี้ "
+                "4) เทียบยอดที่สปสช.ชดเชยเต็มอัตรา กับยอดที่ได้รับจัดสรรจริงตามข้อตกลงจังหวัด "
+                "— คาดการณ์แยก PP และ FS ต่างหากจากกัน เพราะรายการอ้างอิงเป็น PP Fee เป็นหลัก",
+                elem_classes="hint-text",
+            )
+            facility_dropdown = gr.Dropdown(
+                label="เลือกหน่วยบริการ",
+                choices=[hcode_label(code) for code in sorted(HCODE_NAMES)],
+            )
+
+            gr.Markdown("#### 1️⃣ รายชื่อผู้รับบริการ", elem_classes="section-title")
+            facility_people_table = gr.Dataframe(interactive=False)
+
+            gr.Markdown("#### 2️⃣ คาดการณ์บริการรายรายการ", elem_classes="section-title")
+            facility_prediction_table = gr.Dataframe(interactive=False)
+
+            gr.Markdown("#### 3️⃣ สรุปจำนวนรายการ (15 รายการ)", elem_classes="section-title")
+            facility_count_table = gr.Dataframe(interactive=False)
+
+            gr.Markdown("#### 4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", elem_classes="section-title")
+            facility_reconcile_table = gr.Dataframe(interactive=False)
+
         with gr.Tab("🧮 จัดสรรบริการ"):
             gr.Markdown(
                 "จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน "
@@ -770,6 +817,12 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs)
 
     ranking_table.select(on_select_facility, outputs=[breakdown_label, breakdown_table])
+
+    facility_dropdown.change(
+        analyze_facility_ui,
+        inputs=facility_dropdown,
+        outputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
+    )
 
     login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]).then(
         toggle_admin, inputs=role_state, outputs=admin_section
