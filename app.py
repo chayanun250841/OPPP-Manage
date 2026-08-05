@@ -38,7 +38,7 @@ THEME = gr.themes.Soft(
 CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
 
-:root {
+:root, .dark, .gradio-container.dark {
     --oppp-navy: #0d2c4e;
     --oppp-navy-dark: #081b31;
     --oppp-navy-light: #1f4e79;
@@ -50,25 +50,25 @@ CUSTOM_CSS = """
     --oppp-text-dim: #5b677c;
     --oppp-shadow: 0 1px 3px rgba(13, 44, 78, 0.08), 0 1px 2px rgba(13, 44, 78, 0.06);
 }
-@media (prefers-color-scheme: dark) {
-    :root {
-        --oppp-navy: #0d2c4e;
-        --oppp-navy-dark: #081b31;
-        --oppp-navy-light: #2a5d8c;
-        --oppp-bg: #0b1420;
-        --oppp-surface: #101c2c;
-        --oppp-border: #223347;
-        --oppp-text: #e7ecf3;
-        --oppp-text-dim: #94a3b8;
-        --oppp-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-    }
-}
 
+/* Force the light navy/white look regardless of the visitor's OS/browser
+   dark-mode preference -- Gradio's built-in dark skin otherwise overrides
+   input/textarea backgrounds independently of the vars above. */
 .gradio-container, .gradio-container * {
     font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
 }
-.gradio-container {
+.gradio-container, .gradio-container.dark {
     background: var(--oppp-bg) !important;
+    color-scheme: light !important;
+}
+.gradio-container input,
+.gradio-container textarea,
+.gradio-container select,
+.gradio-container .block,
+.gradio-container .form,
+.gradio-container .wrap {
+    background: var(--oppp-surface);
+    color: var(--oppp-text);
 }
 
 /* ---------- Header ---------- */
@@ -118,9 +118,6 @@ CUSTOM_CSS = """
     margin-bottom: 12px !important;
     border-bottom: 2px solid var(--oppp-gold) !important;
 }
-@media (prefers-color-scheme: dark) {
-    .section-title h3 { color: #dbe4ef !important; }
-}
 
 /* ---------- Cards ---------- */
 .card {
@@ -147,14 +144,15 @@ CUSTOM_CSS = """
 }
 .kpi-card.gold { border-left: 4px solid var(--oppp-gold) !important; }
 .kpi-card label span { color: var(--oppp-text-dim) !important; font-weight: 600 !important; }
+.kpi-card .wrap, .kpi-card .block, .kpi-card .form {
+    background: transparent !important;
+}
 .kpi-card textarea, .kpi-card input {
     font-size: 1.35rem !important;
     font-weight: 700 !important;
     color: var(--oppp-navy) !important;
     background: transparent !important;
-}
-@media (prefers-color-scheme: dark) {
-    .kpi-card textarea, .kpi-card input { color: #e7ecf3 !important; }
+    -webkit-text-fill-color: var(--oppp-navy) !important;
 }
 
 /* ---------- Misc ---------- */
