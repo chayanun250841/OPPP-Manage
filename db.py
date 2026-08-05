@@ -20,8 +20,11 @@ CREATE TABLE IF NOT EXISTS upload_batches (
     duplicate_count INTEGER NOT NULL DEFAULT 0,
     pp_total NUMERIC NOT NULL DEFAULT 0,
     fs_total NUMERIC NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'active'
+    status TEXT NOT NULL DEFAULT 'active',
+    note TEXT NOT NULL DEFAULT ''
 );
+-- note = หมายเหตุที่ผู้อัปโหลดพิมพ์กำกับไว้ เช่น ช่วงข้อมูลของไฟล์ชุดนั้น
+ALTER TABLE upload_batches ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS records (
     record_code TEXT PRIMARY KEY,
@@ -74,7 +77,7 @@ def init_db() -> None:
         conn.commit()
 
 
-def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: pd.DataFrame) -> dict:
+def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: pd.DataFrame, note: str = "") -> dict:
     """Insert a new upload batch and its records.
 
     Deduplication is by TRAN_ID across the whole table (any batch, any month) --
@@ -88,10 +91,10 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO upload_batches (batch_id, report_period, source_file, uploaded_by, record_count)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO upload_batches (batch_id, report_period, source_file, uploaded_by, record_count, note)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (batch_id, report_period, source_file, uploaded_by, submitted),
+                (batch_id, report_period, source_file, uploaded_by, submitted, note),
             )
             tran_ids = [t for t in frame["TRAN_ID"].astype(str).tolist() if t]
             if tran_ids:
@@ -154,6 +157,7 @@ def list_batches() -> pd.DataFrame:
             batch_id AS "รหัสชุดข้อมูล",
             report_period AS "รอบรายงาน",
             source_file AS "ไฟล์ต้นทาง",
+            note AS "หมายเหตุ",
             uploaded_by AS "ผู้บันทึก",
             uploaded_at AS "เวลาอัปโหลด",
             inserted_count AS "รายการที่บันทึก",

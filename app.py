@@ -90,7 +90,27 @@ CUSTOM_CSS = """
     --oppp-accent-dark: #189454;
     --oppp-accent-text: #032312;
     --oppp-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --oppp-overlay: rgba(2, 5, 4, 0.78);
 }
+
+/* Light theme -- toggled by the ☀/🌙 button next to Login, which flips this
+   class on the container and remembers the choice in localStorage. */
+.gradio-container.oppp-light, .gradio-container.oppp-light.dark {
+    --oppp-bg: #eef2ef;
+    --oppp-panel: #ffffff;
+    --oppp-panel-alt: #e6efe9;
+    --oppp-input: #ffffff;
+    --oppp-border: #c3d4c8;
+    --oppp-text: #17281f;
+    --oppp-text-dim: #4d6b58;
+    --oppp-accent: #0f7a42;
+    --oppp-accent-dark: #0a5c31;
+    --oppp-accent-text: #ffffff;
+    --oppp-shadow: 0 1px 3px rgba(20, 40, 30, 0.14), 0 1px 2px rgba(20, 40, 30, 0.10);
+    --oppp-overlay: rgba(30, 45, 36, 0.55);
+    color-scheme: light !important;
+}
+.gradio-container.oppp-light, .gradio-container.oppp-light.dark { color-scheme: light !important; }
 
 /* Force the dark terminal look regardless of the visitor's OS/browser
    color-scheme preference -- Gradio's built-in skin otherwise overrides
@@ -102,7 +122,14 @@ CUSTOM_CSS = """
     background: var(--oppp-bg) !important;
     color: var(--oppp-text) !important;
     color-scheme: dark !important;
+    font-size: 16px !important;
 }
+/* Readable body copy -- the old 0.8rem sizing was too small to scan. */
+.gradio-container p,
+.gradio-container li,
+.gradio-container label,
+.gradio-container .prose,
+.gradio-container button { font-size: 0.98rem !important; }
 .gradio-container input,
 .gradio-container textarea,
 .gradio-container select,
@@ -137,26 +164,35 @@ CUSTOM_CSS = """
     border-left: 4px solid var(--oppp-accent);
     box-shadow: var(--oppp-shadow);
 }
+/* Coin: a slow 3D spin about the vertical axis. The wrapper owns the
+   perspective so the rotation reads as depth rather than a flat squash. */
 .oppp-header .icon {
-    font-size: 2rem;
+    font-size: 3.4rem;
     line-height: 1;
-    width: 52px; height: 52px;
+    width: 104px; height: 104px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(47, 212, 122, 0.10);
-    border-radius: 50%;
-    border: 1px solid rgba(47, 212, 122, 0.35);
     flex-shrink: 0;
-    overflow: hidden;
+    perspective: 700px;
 }
 .oppp-header .icon img {
     width: 100%; height: 100%;
     object-fit: contain;
+    transform-style: preserve-3d;
+    animation: oppp-coin-spin 9s linear infinite;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+@keyframes oppp-coin-spin {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .oppp-header .icon img { animation: none; }
 }
 .oppp-header h1 {
-    margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.2px;
+    margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: 0.2px;
     color: var(--oppp-accent);
 }
-.oppp-header p { margin: 4px 0 0; opacity: 0.8; font-size: 0.82rem; color: var(--oppp-text-dim); }
+.oppp-header p { margin: 6px 0 0; opacity: 0.85; font-size: 0.95rem; color: var(--oppp-text-dim); }
 .oppp-header .badge {
     margin-left: auto;
     text-align: right;
@@ -221,18 +257,69 @@ CUSTOM_CSS = """
     -webkit-text-fill-color: var(--oppp-accent) !important;
 }
 
-/* ---------- Misc ---------- */
-.admin-toggle { max-width: 340px; margin: 0 0 10px auto !important; }
-.admin-toggle .label-wrap {
-    background: var(--oppp-panel) !important;
-    border: 1px solid var(--oppp-border) !important;
+/* ---------- Top bar (theme toggle + login, to the right of the logo) ------ */
+.topbar { justify-content: flex-end !important; gap: 10px !important; margin-bottom: 10px !important; }
+.topbar button {
+    min-width: 0 !important;
+    padding: 8px 16px !important;
     border-radius: 6px !important;
 }
-.admin-toggle .label-wrap span { font-size: 0.78rem !important; color: var(--oppp-text-dim) !important; }
+.icon-btn button, button.icon-btn {
+    font-size: 1.15rem !important;
+    padding: 8px 12px !important;
+}
 
-.login-status { font-weight: 600 !important; font-size: 0.85rem !important; color: var(--oppp-text) !important; }
-.hint-text { color: var(--oppp-text-dim) !important; font-size: 0.82rem !important; }
-.footer-note { text-align: center !important; color: var(--oppp-text-dim) !important; font-size: 0.78rem !important; margin-top: 18px !important; opacity: 0.8; }
+/* ---------- Modal overlay (login + developer console) ---------- */
+.oppp-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 3000 !important;
+    background: var(--oppp-overlay) !important;
+    backdrop-filter: blur(4px);
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding: 3vh 16px !important;
+    overflow-y: auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+/* Gradio wraps a Group's children in a `.styler` flex item that shrinks to
+   its content -- without this the panel collapses to ~286px regardless of
+   the width set on it. */
+.oppp-modal .styler {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+}
+.oppp-modal-panel {
+    flex: 0 0 auto !important;
+    /* margin auto centers regardless of the wrapper's flex-direction --
+       justify-content alone does not, since Gradio stacks it as a column */
+    margin: 0 auto !important;
+    width: min(1200px, 100%) !important;
+    background: var(--oppp-panel) !important;
+    border: 1px solid var(--oppp-border) !important;
+    border-top: 3px solid var(--oppp-accent) !important;
+    border-radius: 10px !important;
+    padding: 20px 24px 24px !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55) !important;
+}
+.oppp-modal-panel.narrow { width: min(480px, 100%) !important; }
+.modal-head { align-items: center !important; margin-bottom: 6px !important; }
+.modal-title h3 {
+    margin: 0 !important;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+    font-size: 1.1rem !important;
+}
+.modal-close button, button.modal-close { max-width: 46px !important; padding: 6px 10px !important; }
+
+.login-status { font-weight: 600 !important; font-size: 0.95rem !important; color: var(--oppp-text) !important; }
+.hint-text { color: var(--oppp-text-dim) !important; font-size: 0.9rem !important; line-height: 1.6 !important; }
+.footer-note { text-align: center !important; color: var(--oppp-text-dim) !important; font-size: 0.85rem !important; margin-top: 18px !important; opacity: 0.85; }
 
 /* Buttons */
 button.primary, .gr-button-primary {
@@ -259,16 +346,37 @@ table, thead, tbody, tr, td, th {
 }
 thead th { color: var(--oppp-accent) !important; }
 
-/* Compact cells so wide pivot tables (many item columns) stay readable.
-   Do NOT force white-space here -- that overrides each Dataframe's own
-   `wrap` setting and, combined with narrow auto-sized columns, stacks
-   short headers into a single letter per line. Let `wrap` control it. */
+/* Do NOT force white-space on cells -- that overrides each Dataframe's own
+   `wrap` setting and, combined with narrow auto-sized columns, stacks short
+   headers into a single letter per line. Let `wrap` control it. */
 .gradio-container table td,
 .gradio-container table th {
-    padding: 4px 8px !important;
-    font-size: 0.82rem !important;
-    line-height: 1.3 !important;
+    padding: 8px 12px !important;
+    font-size: 0.95rem !important;
+    line-height: 1.45 !important;
 }
+/* Headers must stay horizontally readable even in the wide pivot table --
+   wrap onto extra lines rather than being squeezed one letter per line. */
+.gradio-container table th {
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: anywhere !important;
+    vertical-align: bottom !important;
+    font-weight: 700 !important;
+}
+
+/* ---------- Tabs ---------- */
+.gradio-container .tab-nav button {
+    font-size: 1rem !important;
+    padding: 10px 18px !important;
+}
+.gradio-container .tab-nav button.selected {
+    color: var(--oppp-accent) !important;
+    border-bottom: 2px solid var(--oppp-accent) !important;
+}
+
+/* ---------- Accordions used to collapse the long tables ---------- */
+.gradio-container .label-wrap span { font-size: 1rem !important; font-weight: 600 !important; }
 """
 
 
@@ -367,31 +475,66 @@ def parse_report(path: str) -> tuple[pd.DataFrame, dict[str, int]]:
     return result, stats
 
 
+# Downloads must live somewhere Gradio is willing to serve. Gradio 5+ blocks
+# arbitrary paths, and a bare tempfile.gettempdir() path is outside the set it
+# trusts -- the click then produced no file at all. This directory is passed to
+# launch(allowed_paths=...) so every export below is served.
+EXPORT_DIR = os.path.join(tempfile.gettempdir(), "oppp_exports")
+os.makedirs(EXPORT_DIR, exist_ok=True)
+
+
+def export_path(name: str, extension: str) -> str:
+    safe = re.sub(r"[^\w฀-๿.-]+", "_", name).strip("_") or "export"
+    return os.path.join(EXPORT_DIR, f"{safe}_{datetime.now():%Y%m%d_%H%M%S}.{extension}")
+
+
 def export_csv(frame: pd.DataFrame, name: str) -> str:
-    path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.csv")
+    path = export_path(name, "csv")
     frame.to_csv(path, index=False, encoding="utf-8-sig")
     return path
 
 
-def export_excel(frame: pd.DataFrame | None, name: str):
-    """Excel-download handler for a Dataframe component's current value."""
-    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
-        return None
-    path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
-    frame.to_excel(path, index=False)
-    return path
+def as_frame(value: object) -> pd.DataFrame | None:
+    """A gr.Dataframe hands its value back as a DataFrame, but an empty one can
+    arrive as a dict/list depending on how it was last written. Normalise so a
+    download never silently no-ops on a shape we did not expect."""
+    if isinstance(value, pd.DataFrame):
+        return value if not value.empty else None
+    if isinstance(value, dict) and "data" in value:
+        frame = pd.DataFrame(value["data"], columns=value.get("headers"))
+        return frame if not frame.empty else None
+    if isinstance(value, list) and value:
+        return pd.DataFrame(value)
+    return None
 
 
-def export_excel_sheets(name: str, **sheets: pd.DataFrame | None):
+def export_excel(frame: object, name: str):
+    """Excel-download handler for a Dataframe component's current value.
+    Returns (ไฟล์, ข้อความสถานะ) so a failure is visible instead of silent."""
+    data = as_frame(frame)
+    if data is None:
+        return None, "⚠️ ยังไม่มีข้อมูลในตารางนี้ให้ดาวน์โหลด"
+    try:
+        path = export_path(name, "xlsx")
+        data.to_excel(path, index=False)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"❌ สร้างไฟล์ Excel ไม่สำเร็จ: {exc}"
+    return path, f"✅ พร้อมดาวน์โหลด · {len(data):,} แถว"
+
+
+def export_excel_sheets(name: str, **sheets: object):
     """Excel-download handler that writes multiple tables as separate sheets."""
-    usable = {label: df for label, df in sheets.items() if isinstance(df, pd.DataFrame) and not df.empty}
+    usable = {label: df for label, df in ((k, as_frame(v)) for k, v in sheets.items()) if df is not None}
     if not usable:
-        return None
-    path = os.path.join(tempfile.gettempdir(), f"{name}_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
-    with pd.ExcelWriter(path) as writer:
-        for label, df in usable.items():
-            df.to_excel(writer, sheet_name=label[:31], index=False)
-    return path
+        return None, "⚠️ ยังไม่มีข้อมูลในตารางเหล่านี้ให้ดาวน์โหลด"
+    try:
+        path = export_path(name, "xlsx")
+        with pd.ExcelWriter(path) as writer:
+            for label, df in usable.items():
+                df.to_excel(writer, sheet_name=label[:31], index=False)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"❌ สร้างไฟล์ Excel ไม่สำเร็จ: {exc}"
+    return path, f"✅ พร้อมดาวน์โหลด · {len(usable)} ตาราง"
 
 
 # ---------------------------------------------------------------------------
@@ -413,10 +556,6 @@ def login(username: str, password: str):
 
 def logout():
     return "viewer", "ออกจากระบบแล้ว"
-
-
-def toggle_admin(role: str):
-    return gr.update(visible=(role == "admin"))
 
 
 # ---------------------------------------------------------------------------
@@ -453,8 +592,6 @@ def refresh_dashboard():
     else:
         updated = f"🟢 อัปเดตล่าสุด {datetime.now():%d/%m/%Y %H:%M:%S} น. · ข้อมูลสะสม {count:,} รายการ"
 
-    top10 = ranking.head(10) if not ranking.empty else ranking
-
     return (
         f"{float(totals.get('grand_total') or 0):,.2f} บาท",
         f"{float(totals.get('pp') or 0):,.2f} บาท",
@@ -462,7 +599,6 @@ def refresh_dashboard():
         f"{count:,} รายการ",
         f"{int(totals.get('hcode_count') or 0):,} แห่ง",
         str(totals.get("latest_period") or "-"),
-        top10,
         format_ranking_table(ranking),
         updated,
     )
@@ -616,38 +752,54 @@ def build_all_facilities_summary():
 # ---------------------------------------------------------------------------
 
 
-def process_upload(files: list[str] | None, uploader: str):
+def process_upload(files: list[str] | None, uploader: str, note: str):
+    """Process one batch of report files, adding them on top of what is already
+    stored -- uploading is always cumulative, never a replacement.
+
+    Returns (สรุปผล, ล้างช่องเลือกไฟล์) so the picker empties after a successful
+    run and the next batch can be dropped straight in. Without that the previous
+    selection lingers and pressing the button again files an empty duplicate batch.
+    """
+    keep = gr.update()
     if not files:
-        return "กรุณาเลือกไฟล์ .xls อย่างน้อย 1 ไฟล์"
+        return "⚠️ กรุณาเลือกไฟล์ .xls อย่างน้อย 1 ไฟล์", keep
     if not uploader or not uploader.strip():
-        return "กรุณาระบุชื่อผู้บันทึกก่อนอัปโหลด"
+        return "⚠️ กรุณาระบุชื่อผู้บันทึกก่อนอัปโหลด", keep
 
     lines = []
+    added = 0
     for path in files:
         name = os.path.basename(path)
         try:
             frame, stats = parse_report(path)
         except Exception as exc:  # noqa: BLE001
-            lines.append(f"❌ {name}: อ่านไฟล์ไม่สำเร็จ ({exc})")
+            lines.append(f"- ❌ **{name}** — อ่านไฟล์ไม่สำเร็จ ({exc})")
             continue
 
         report_period = frame["รอบรายงาน"].iloc[0] if not frame.empty else name
 
         try:
-            outcome = db.insert_batch(report_period, name, uploader.strip(), frame)
+            outcome = db.insert_batch(report_period, name, uploader.strip(), frame, (note or "").strip())
         except Exception as exc:  # noqa: BLE001
-            lines.append(f"❌ {name}: บันทึกฐานข้อมูลไม่สำเร็จ ({exc})")
+            lines.append(f"- ❌ **{name}** — บันทึกฐานข้อมูลไม่สำเร็จ ({exc})")
             continue
 
+        added += outcome["inserted_count"]
         lines.append(
-            f"✅ {name} (รอบ {report_period}): อ่าน {stats['อ่านได้']:,} แถว "
-            f"· ตัดแถวที่ไม่มีเงิน PP/FS {stats['ไม่มีเงิน PP/FS']:,} แถว "
-            f"· ตัด TRAN_ID ซ้ำในไฟล์ {stats['TRAN_ID ซ้ำ/ว่างในไฟล์']:,} แถว "
-            f"· เข้าเกณฑ์ {stats['นำเข้า']:,} แถว → บันทึกใหม่ {outcome['inserted_count']:,} รายการ "
-            f"(ซ้ำกับที่มีอยู่แล้ว {outcome['duplicate_count']:,} รายการ)"
+            f"- ✅ **{name}** (รอบ {report_period}) — อ่าน {stats['อ่านได้']:,} แถว "
+            f"· ตัดแถวไม่มีเงิน PP/FS {stats['ไม่มีเงิน PP/FS']:,} "
+            f"· ตัด TRAN_ID ซ้ำในไฟล์ {stats['TRAN_ID ซ้ำ/ว่างในไฟล์']:,} "
+            f"· เข้าเกณฑ์ {stats['นำเข้า']:,} → **บันทึกใหม่ {outcome['inserted_count']:,} รายการ** "
+            f"(ซ้ำกับที่มีอยู่แล้ว {outcome['duplicate_count']:,})"
         )
 
-    return "\n".join(lines)
+    try:
+        total = int(db.get_overall_totals().get("count") or 0)
+        lines.append(f"\n**รวมรอบนี้เพิ่ม {added:,} รายการ · ตอนนี้ทั้งระบบมี {total:,} รายการ**")
+    except Exception:  # noqa: BLE001
+        pass
+
+    return "\n".join(lines), gr.update(value=None)
 
 
 def reset_system(role: str, password: str):
@@ -791,15 +943,6 @@ def export_ledger_csv():
 with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     role_state = gr.State("viewer")
 
-    with gr.Accordion("🔒 สำหรับผู้ดูแลระบบ", open=False, elem_classes="admin-toggle"):
-        with gr.Row():
-            username_box = gr.Textbox(label="ชื่อผู้ใช้", scale=1)
-            password_box = gr.Textbox(label="รหัสผ่าน", type="password", scale=1)
-        with gr.Row():
-            login_btn = gr.Button("เข้าสู่ระบบ", variant="primary", scale=1)
-            logout_btn = gr.Button("ออกจากระบบ", scale=1)
-        login_status = gr.Markdown(elem_classes="login-status")
-
     _header_icon = (
         f'<img src="{LOGO_DATA_URI}" alt="กระทรวงสาธารณสุข" />'
         if LOGO_DATA_URI
@@ -817,113 +960,150 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         """
     )
 
+    with gr.Row(elem_classes="topbar"):
+        theme_btn = gr.Button("🌙", elem_classes="icon-btn", scale=0, min_width=60)
+        open_login_btn = gr.Button("🔑 เข้าสู่ระบบ", scale=0, min_width=150)
+        open_admin_btn = gr.Button("🛠️ หน้าผู้ดูแลระบบ", variant="primary", visible=False, scale=0, min_width=190)
+        logout_btn = gr.Button("🚪 ออกจากระบบ", visible=False, scale=0, min_width=150)
+
+    # --- Login modal ---------------------------------------------------
+    with gr.Group(visible=False, elem_classes="oppp-modal") as login_modal:
+        with gr.Column(elem_classes="oppp-modal-panel narrow"):
+            with gr.Row(elem_classes="modal-head"):
+                gr.Markdown("### 🔐 เข้าสู่ระบบผู้ดูแล", elem_classes="modal-title")
+                close_login_btn = gr.Button("✕", elem_classes="modal-close", scale=0, min_width=46)
+            gr.Markdown("กรอกข้อมูลแล้วกด Enter ได้เลย", elem_classes="hint-text")
+            # lines=max_lines=1 forces a real <input>; the default renders a
+            # <textarea>, where Enter inserts a newline instead of submitting.
+            username_box = gr.Textbox(label="ชื่อผู้ใช้", autofocus=True, lines=1, max_lines=1)
+            password_box = gr.Textbox(label="รหัสผ่าน", type="password", lines=1, max_lines=1)
+            login_btn = gr.Button("เข้าสู่ระบบ", variant="primary")
+            login_status = gr.Markdown(elem_classes="login-status")
+
     updated_badge = gr.Markdown("กำลังโหลดข้อมูล...")
 
-    with gr.Row(elem_classes="kpi-row"):
-        with gr.Group(elem_classes="kpi-card"):
-            kpi_total = gr.Textbox(label="💰 ยอดชดเชยทั้งสิ้นสะสม", interactive=False)
-        with gr.Group(elem_classes="kpi-card"):
-            kpi_pp = gr.Textbox(label="💵 ยอด PP สะสม", interactive=False)
-        with gr.Group(elem_classes="kpi-card"):
-            kpi_fs = gr.Textbox(label="🩺 ยอด FS สะสม", interactive=False)
-    with gr.Row(elem_classes="kpi-row"):
-        with gr.Group(elem_classes="kpi-card gold"):
-            kpi_count = gr.Textbox(label="🧾 จำนวนรายการสะสม", interactive=False)
-        with gr.Group(elem_classes="kpi-card gold"):
-            kpi_hcode = gr.Textbox(label="🏥 จำนวนหน่วยบริการ", interactive=False)
-        with gr.Group(elem_classes="kpi-card gold"):
-            kpi_latest = gr.Textbox(label="📅 รอบข้อมูลล่าสุด", interactive=False)
+    with gr.Tabs():
+        with gr.Tab("📈 ภาพรวม"):
+            with gr.Row(elem_classes="kpi-row"):
+                with gr.Group(elem_classes="kpi-card"):
+                    kpi_total = gr.Textbox(label="💰 ยอดชดเชยทั้งสิ้นสะสม", interactive=False)
+                with gr.Group(elem_classes="kpi-card"):
+                    kpi_pp = gr.Textbox(label="💵 ยอด PP สะสม", interactive=False)
+                with gr.Group(elem_classes="kpi-card"):
+                    kpi_fs = gr.Textbox(label="🩺 ยอด FS สะสม", interactive=False)
+            with gr.Row(elem_classes="kpi-row"):
+                with gr.Group(elem_classes="kpi-card gold"):
+                    kpi_count = gr.Textbox(label="🧾 จำนวนรายการสะสม", interactive=False)
+                with gr.Group(elem_classes="kpi-card gold"):
+                    kpi_hcode = gr.Textbox(label="🏥 จำนวนหน่วยบริการ", interactive=False)
+                with gr.Group(elem_classes="kpi-card gold"):
+                    kpi_latest = gr.Textbox(label="📅 รอบข้อมูลล่าสุด", interactive=False)
 
-    with gr.Group(elem_classes="card"):
-        gr.Markdown("### 🏆 อันดับหน่วยบริการตามยอดชดเชย (Top 10)", elem_classes="section-title")
-        top_hcode_plot = gr.BarPlot(
-            value=pd.DataFrame(columns=RANKING_COLUMNS),
-            x="HCODE", y="ยอดชดเชยทั้งสิ้น",
-            title=None, height=280, show_label=False,
-        )
+        with gr.Tab("📊 สรุปรายหน่วยบริการ"):
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("คลิกแถวหน่วยบริการเพื่อดูรายละเอียดบริการด้านล่าง", elem_classes="hint-text")
+                with gr.Accordion("📊 ตารางสรุปยอดชดเชยรายหน่วยบริการ (ทั้งหมด)", open=True):
+                    ranking_table = gr.Dataframe(
+                        value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False, wrap=True
+                    )
+                with gr.Row():
+                    ranking_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+                    ranking_excel_file = gr.File(label="ไฟล์ Excel")
+                ranking_excel_status = gr.Markdown(elem_classes="hint-text")
 
-    with gr.Group(elem_classes="card"):
-        gr.Markdown("### 📊 สรุปยอดชดเชยรายหน่วยบริการ (ทั้งหมด)", elem_classes="section-title")
-        gr.Markdown("คลิกแถวหน่วยบริการเพื่อดูรายละเอียดบริการด้านล่าง", elem_classes="hint-text")
-        ranking_table = gr.Dataframe(value=pd.DataFrame(columns=RANKING_COLUMNS), interactive=False, wrap=True)
-        ranking_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-        ranking_excel_file = gr.File(label="ไฟล์ Excel", visible=True)
+            with gr.Group(elem_classes="card"):
+                breakdown_label = gr.Markdown("### 🔍 รายละเอียดบริการ\nคลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น")
+                with gr.Accordion("🔍 ตารางรายละเอียดบริการของหน่วยที่เลือก", open=True):
+                    breakdown_table = gr.Dataframe(value=pd.DataFrame(columns=BREAKDOWN_COLUMNS), interactive=False, wrap=True)
 
-    with gr.Group(elem_classes="card"):
-        breakdown_label = gr.Markdown("### 🔍 รายละเอียดบริการ\nคลิกแถวในตารางด้านบนเพื่อดูรายละเอียดบริการของหน่วยนั้น")
-        breakdown_table = gr.Dataframe(value=pd.DataFrame(columns=BREAKDOWN_COLUMNS), interactive=False)
-
-    with gr.Group(elem_classes="card"):
-        gr.Markdown("### 🔢 ยอดชดเชยที่พบบ่อย", elem_classes="section-title")
-        gr.Markdown(
-            "นับเฉพาะรายการที่มีเงินใน PP หรือ FS และตัด TRAN_ID ซ้ำแล้ว "
-            "· คอลัมน์ 'ตีความตามกติกา' อ้างอิงแฟ้มกติกาที่ยืนยันไว้ ยอดที่ระบุว่ากำกวมต้องดูรหัสบริการประกอบ",
-            elem_classes="hint-text",
-        )
-        frequency_note = gr.Markdown("กำลังโหลดข้อมูล...")
-        frequency_table = gr.Dataframe(value=pd.DataFrame(columns=FREQUENCY_COLUMNS), interactive=False, wrap=True)
+        with gr.Tab("🔢 ยอดที่พบบ่อย"):
+            with gr.Group(elem_classes="card"):
+                gr.Markdown(
+                    "นับเฉพาะรายการที่มีเงินใน PP หรือ FS และตัด TRAN_ID ซ้ำแล้ว "
+                    "· คอลัมน์ 'ตีความตามกติกา' อ้างอิงแฟ้มกติกาที่ยืนยันไว้ ยอดที่ระบุว่ากำกวมต้องดูรหัสบริการประกอบ",
+                    elem_classes="hint-text",
+                )
+                frequency_note = gr.Markdown("กำลังโหลดข้อมูล...")
+                with gr.Accordion("🔢 ตารางยอดชดเชยที่พบบ่อย", open=True):
+                    frequency_table = gr.Dataframe(
+                        value=pd.DataFrame(columns=FREQUENCY_COLUMNS), interactive=False, wrap=True
+                    )
 
     refresh_timer = gr.Timer(30)
 
     dashboard_outputs = [
         kpi_total, kpi_pp, kpi_fs, kpi_count, kpi_hcode, kpi_latest,
-        top_hcode_plot, ranking_table, updated_badge,
+        ranking_table, updated_badge,
     ]
     frequency_outputs = [frequency_table, frequency_note]
 
     # -----------------------------------------------------------------
-    # Developer console (hidden until admin login)
+    # Developer console -- a modal overlay, opened from the top bar and
+    # closed with ✕. Closing only flips `visible`, so every field, table and
+    # selection inside keeps its value for the next time it is opened.
     # -----------------------------------------------------------------
-    with gr.Group(visible=False) as admin_section:
-        gr.Markdown("## 🛠️ หน้าผู้ดูแลระบบ / Developer")
+    with gr.Group(visible=False, elem_classes="oppp-modal") as admin_section:
+      with gr.Column(elem_classes="oppp-modal-panel"):
+        with gr.Row(elem_classes="modal-head"):
+            gr.Markdown("### 🛠️ หน้าผู้ดูแลระบบ / Developer", elem_classes="modal-title")
+            close_admin_btn = gr.Button("✕", elem_classes="modal-close", scale=0, min_width=46)
 
-        with gr.Group(elem_classes="card dev-card"):
-            gr.Markdown("### 📤 อัปโหลดรายงานเดือนใหม่", elem_classes="section-title")
+        with gr.Tab("📤 อัปโหลด"):
             files = gr.File(label="ไฟล์รายงาน OPPP (.xls) — เลือกได้หลายไฟล์", file_count="multiple", file_types=[".xls"], type="filepath")
-            uploader_name = gr.Textbox(label="ผู้บันทึก", placeholder="ชื่อผู้อัปโหลด")
+            with gr.Row():
+                uploader_name = gr.Textbox(label="ผู้บันทึก", placeholder="ชื่อผู้อัปโหลด")
+                upload_note = gr.Textbox(
+                    label="หมายเหตุ",
+                    placeholder="เช่น ข้อมูล ต.ค. 2568 – ก.ค. 2569",
+                )
             run = gr.Button("⚙️ ประมวลผลและบันทึกลงฐานข้อมูล", variant="primary")
             gr.Markdown(
-                "⚠️ อัปโหลดไฟล์ของรอบใหม่ได้เรื่อยๆ ระบบจะรวมกับข้อมูลเดิมอัตโนมัติ และข้ามรายการที่ซ้ำกับที่มีอยู่แล้วให้เอง",
+                "⚠️ อัปโหลดไฟล์ของรอบใหม่ได้เรื่อยๆ ระบบจะรวมกับข้อมูลเดิมอัตโนมัติ และข้ามรายการที่ซ้ำกับที่มีอยู่แล้วให้เอง "
+                "· หมายเหตุจะถูกบันทึกไว้กับไฟล์ชุดนี้และแสดงในประวัติการอัปโหลด",
                 elem_classes="hint-text",
             )
             upload_status = gr.Markdown()
 
-        with gr.Group(elem_classes="card dev-card"):
-            gr.Markdown("### 🕒 ประวัติการอัปโหลด (ย้อนกลับได้หากอัปผิดไฟล์)", elem_classes="section-title")
-            batch_table = gr.Dataframe(interactive=False)
+        with gr.Tab("🕒 ประวัติ / ย้อนกลับ"):
+            with gr.Accordion("🕒 ตารางประวัติการอัปโหลด", open=True):
+                batch_table = gr.Dataframe(interactive=False, wrap=True)
             batch_dropdown = gr.Dropdown(label="เลือกไฟล์ที่ต้องการย้อนกลับ/กู้คืน", choices=[])
             with gr.Row():
                 rollback_btn = gr.Button("↩️ ย้อนกลับไฟล์นี้")
                 restore_btn = gr.Button("♻️ กู้คืนไฟล์นี้")
             batch_status = gr.Markdown()
 
-        with gr.Group(elem_classes="card dev-card"):
-            gr.Markdown("### 🧨 รีเซ็ตระบบกลับเป็นค่าเริ่มต้น", elem_classes="section-title")
-            gr.Markdown(
-                "ลบข้อมูลที่อัปโหลดไว้**ทั้งหมด** (ทุกไฟล์ ทุกรอบ รวมถึงสมุดจัดสรรบริการ) "
-                "ให้ระบบว่างเปล่าเหมือนเพิ่งติดตั้งใหม่ เพื่อเริ่มอัปโหลดไฟล์ชุดใหม่\n\n"
-                "⚠️ **ย้อนกลับไม่ได้** — ต่างจากปุ่ม “ย้อนกลับไฟล์นี้” ด้านบนที่ยังกู้คืนได้ "
-                "ต้องมีสิทธิ์ผู้ดูแลระบบ **และ** กรอกรหัสผ่านยืนยันอีกครั้งจึงจะทำงาน",
-                elem_classes="hint-text",
-            )
-            reset_password = gr.Textbox(
-                label="ยืนยันรหัสผ่านผู้ดูแลระบบ",
-                type="password",
-                placeholder="กรอกรหัสผ่านเดิมอีกครั้งเพื่อยืนยัน",
-            )
-            reset_btn = gr.Button("🧨 ยืนยันรีเซ็ตระบบทั้งหมด", variant="stop")
-            reset_status = gr.Markdown()
+            with gr.Accordion("🧨 รีเซ็ตระบบกลับเป็นค่าเริ่มต้น", open=False):
+                gr.Markdown(
+                    "ลบข้อมูลที่อัปโหลดไว้**ทั้งหมด** (ทุกไฟล์ ทุกรอบ รวมถึงสมุดจัดสรรบริการ) "
+                    "ให้ระบบว่างเปล่าเหมือนเพิ่งติดตั้งใหม่ เพื่อเริ่มอัปโหลดไฟล์ชุดใหม่\n\n"
+                    "⚠️ **ย้อนกลับไม่ได้** — ต่างจากปุ่ม “ย้อนกลับไฟล์นี้” ด้านบนที่ยังกู้คืนได้ "
+                    "ต้องมีสิทธิ์ผู้ดูแลระบบ **และ** กรอกรหัสผ่านยืนยันอีกครั้งจึงจะทำงาน",
+                    elem_classes="hint-text",
+                )
+                reset_password = gr.Textbox(
+                    label="ยืนยันรหัสผ่านผู้ดูแลระบบ",
+                    type="password",
+                    placeholder="กรอกรหัสผ่านเดิมอีกครั้งเพื่อยืนยัน",
+                )
+                reset_btn = gr.Button("🧨 ยืนยันรีเซ็ตระบบทั้งหมด", variant="stop")
+                reset_status = gr.Markdown()
 
         with gr.Tab("🧑‍⚕️ ตรวจสอบรายบุคคล"):
-            people_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("🧑‍⚕️ ตารางตรวจสอบรายบุคคล", open=True):
+                people_table = gr.Dataframe(interactive=False, wrap=True)
             people_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
             people_excel_file = gr.File(label="ไฟล์ Excel")
+            people_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("🗂️ ข้อมูลต้นทาง"):
-            raw_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("🗂️ ตารางข้อมูลต้นทาง", open=True):
+                raw_table = gr.Dataframe(interactive=False, wrap=True)
             raw_download = gr.File(label="ดาวน์โหลด CSV ข้อมูลตรวจแล้ว")
-            raw_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-            raw_excel_file = gr.File(label="ไฟล์ Excel")
+            with gr.Row():
+                raw_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+                raw_excel_file = gr.File(label="ไฟล์ Excel")
+            raw_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("📊 วิเคราะห์รายบริการ"):
             gr.Markdown(
@@ -938,20 +1118,22 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 choices=[hcode_label(code) for code in sorted(HCODE_NAMES)],
             )
 
-            gr.Markdown("#### 1️⃣ รายชื่อผู้รับบริการ", elem_classes="section-title")
-            facility_people_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("1️⃣ รายชื่อผู้รับบริการ", open=False):
+                facility_people_table = gr.Dataframe(interactive=False, wrap=True)
 
-            gr.Markdown("#### 2️⃣ คาดการณ์บริการรายรายการ", elem_classes="section-title")
-            facility_prediction_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("2️⃣ คาดการณ์บริการรายรายการ", open=False):
+                facility_prediction_table = gr.Dataframe(interactive=False, wrap=True)
 
-            gr.Markdown("#### 3️⃣ สรุปจำนวนรายการ (9 รายการ)", elem_classes="section-title")
-            facility_count_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("3️⃣ สรุปจำนวนรายการ", open=True):
+                facility_count_table = gr.Dataframe(interactive=False, wrap=True)
 
-            gr.Markdown("#### 4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", elem_classes="section-title")
-            facility_reconcile_table = gr.Dataframe(interactive=False, wrap=True)
+            with gr.Accordion("4️⃣ เปรียบเทียบยอดสปสช. vs ยอดจัดสรรจริง", open=True):
+                facility_reconcile_table = gr.Dataframe(interactive=False, wrap=True)
 
-            facility_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (ทุกตารางในหน้านี้)")
-            facility_excel_file = gr.File(label="ไฟล์ Excel")
+            with gr.Row():
+                facility_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (ทุกตารางในหน้านี้)")
+                facility_excel_file = gr.File(label="ไฟล์ Excel")
+            facility_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
             gr.Markdown(
@@ -963,10 +1145,16 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             )
             summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
             summary_status = gr.Markdown()
-            all_facilities_table = gr.Dataframe(interactive=False, wrap=False, min_width=90)
-            summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
-            summary_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
-            summary_excel_file = gr.File(label="ไฟล์ Excel")
+            with gr.Accordion("📋 ตารางสรุปทุกหน่วยบริการ", open=True):
+                # wrap=True + a wider min_width so headers read as words across
+                # lines instead of one letter per line in this very wide pivot.
+                all_facilities_table = gr.Dataframe(interactive=False, wrap=True, min_width=160)
+            with gr.Accordion("📖 คำอธิบายรหัสรายการ", open=False):
+                summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
+            with gr.Row():
+                summary_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
+                summary_excel_file = gr.File(label="ไฟล์ Excel")
+            summary_excel_status = gr.Markdown(elem_classes="hint-text")
 
         with gr.Tab("🧮 จัดสรรบริการ"):
             gr.Markdown(
@@ -986,12 +1174,17 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 recorder_box = gr.Textbox(label="ผู้บันทึก")
             add_btn = gr.Button("➕ เพิ่มรายการจัดสรร", variant="primary")
             allocation_status = gr.Markdown(elem_classes="login-status")
-            allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False, wrap=True)
-            remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False, wrap=True)
-            ledger_export_btn = gr.Button("ดาวน์โหลดสมุดจัดสรร (CSV)")
-            ledger_download = gr.File(label="ไฟล์สมุดจัดสรร")
-            allocation_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (สมุดจัดสรร + ยอดคงเหลือ)")
-            allocation_excel_file = gr.File(label="ไฟล์ Excel")
+            with gr.Accordion("📒 สมุดจัดสรรบริการ", open=True):
+                allocation_table = gr.Dataframe(label="สมุดจัดสรรบริการ", interactive=False, wrap=True)
+            with gr.Accordion("💳 ยอดคงเหลือต่อรายการ", open=False):
+                remaining_table = gr.Dataframe(label="ยอดคงเหลือต่อรายการ", interactive=False, wrap=True)
+            with gr.Row():
+                ledger_export_btn = gr.Button("ดาวน์โหลดสมุดจัดสรร (CSV)")
+                ledger_download = gr.File(label="ไฟล์สมุดจัดสรร")
+            with gr.Row():
+                allocation_excel_btn = gr.Button("📥 ดาวน์โหลด Excel (สมุดจัดสรร + ยอดคงเหลือ)")
+                allocation_excel_file = gr.File(label="ไฟล์ Excel")
+            allocation_excel_status = gr.Markdown(elem_classes="hint-text")
 
     admin_view_outputs = [people_table, raw_table, raw_download, allocation_table, code_dropdown, remaining_table]
 
@@ -1021,20 +1214,72 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         outputs=[all_facilities_table, summary_status],
     )
 
-    login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]).then(
-        toggle_admin, inputs=role_state, outputs=admin_section
-    ).then(
-        refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
-    ).then(
-        refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
-    ).then(lambda: "", outputs=password_box)
+    # --- Theme toggle: pure client-side so the choice survives reloads ---
+    theme_btn.click(
+        None, None, theme_btn,
+        js="""() => {
+            const root = document.querySelector('.gradio-container');
+            const light = root.classList.toggle('oppp-light');
+            localStorage.setItem('oppp-theme', light ? 'light' : 'dark');
+            return light ? '☀️' : '🌙';
+        }""",
+    )
+    demo.load(
+        None, None, theme_btn,
+        js="""() => {
+            const root = document.querySelector('.gradio-container');
+            const light = localStorage.getItem('oppp-theme') === 'light';
+            root.classList.toggle('oppp-light', light);
+            return light ? '☀️' : '🌙';
+        }""",
+    )
+
+    # --- Modal open/close. Closing only hides the group, so everything
+    #     inside keeps its value for the next time it is opened. ---
+    open_login_btn.click(lambda: gr.update(visible=True), outputs=login_modal)
+    close_login_btn.click(lambda: gr.update(visible=False), outputs=login_modal)
+    open_admin_btn.click(lambda: gr.update(visible=True), outputs=admin_section)
+    close_admin_btn.click(lambda: gr.update(visible=False), outputs=admin_section)
+
+    def after_login(role: str):
+        """On success: close the login modal, open the console, and reveal the
+        admin-only buttons. On failure: keep the modal open showing the error."""
+        is_admin = role == "admin"
+        return (
+            gr.update(visible=is_admin),      # open_admin_btn
+            gr.update(visible=is_admin),      # logout_btn
+            gr.update(visible=not is_admin),  # login_modal -- stays open on failure
+            gr.update(visible=is_admin),      # admin_section
+            gr.update(visible=not is_admin),  # open_login_btn
+        )
+
+    login_targets = [open_admin_btn, logout_btn, login_modal, admin_section, open_login_btn]
+    for event in (
+        login_btn.click(login, inputs=[username_box, password_box], outputs=[role_state, login_status]),
+        username_box.submit(login, inputs=[username_box, password_box], outputs=[role_state, login_status]),
+        password_box.submit(login, inputs=[username_box, password_box], outputs=[role_state, login_status]),
+    ):
+        event.then(
+            after_login, inputs=role_state, outputs=login_targets
+        ).then(
+            refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+        ).then(
+            refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+        ).then(lambda: "", outputs=password_box)
 
     logout_btn.click(logout, outputs=[role_state, login_status]).then(
-        toggle_admin, inputs=role_state, outputs=admin_section
+        lambda: (
+            gr.update(visible=False),  # admin_section
+            gr.update(visible=False),  # open_admin_btn
+            gr.update(visible=False),  # logout_btn
+            gr.update(visible=False),  # login_modal
+            gr.update(visible=True),   # open_login_btn
+        ),
+        outputs=[admin_section, open_admin_btn, logout_btn, login_modal, open_login_btn],
     )
 
     run.click(
-        process_upload, inputs=[files, uploader_name], outputs=upload_status
+        process_upload, inputs=[files, uploader_name, upload_note], outputs=[upload_status, files]
     ).then(
         refresh_dashboard, outputs=dashboard_outputs
     ).then(
@@ -1080,13 +1325,16 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     ledger_export_btn.click(export_ledger_csv, outputs=ledger_download)
 
     ranking_excel_btn.click(
-        lambda df: export_excel(df, "สรุปยอดชดเชยรายหน่วยบริการ"), inputs=ranking_table, outputs=ranking_excel_file
+        lambda df: export_excel(df, "สรุปยอดชดเชยรายหน่วยบริการ"),
+        inputs=ranking_table, outputs=[ranking_excel_file, ranking_excel_status],
     )
     people_excel_btn.click(
-        lambda df: export_excel(df, "ตรวจสอบรายบุคคล"), inputs=people_table, outputs=people_excel_file
+        lambda df: export_excel(df, "ตรวจสอบรายบุคคล"),
+        inputs=people_table, outputs=[people_excel_file, people_excel_status],
     )
     raw_excel_btn.click(
-        lambda df: export_excel(df, "ข้อมูลต้นทาง"), inputs=raw_table, outputs=raw_excel_file
+        lambda df: export_excel(df, "ข้อมูลต้นทาง"),
+        inputs=raw_table, outputs=[raw_excel_file, raw_excel_status],
     )
     facility_excel_btn.click(
         lambda a, b, c, d: export_excel_sheets(
@@ -1094,15 +1342,16 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             รายชื่อผู้รับบริการ=a, คาดการณ์บริการ=b, สรุปจำนวนรายการ=c, เปรียบเทียบยอด=d,
         ),
         inputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
-        outputs=facility_excel_file,
+        outputs=[facility_excel_file, facility_excel_status],
     )
     summary_excel_btn.click(
-        lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"), inputs=all_facilities_table, outputs=summary_excel_file
+        lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"),
+        inputs=all_facilities_table, outputs=[summary_excel_file, summary_excel_status],
     )
     allocation_excel_btn.click(
         lambda a, b: export_excel_sheets("จัดสรรบริการ", สมุดจัดสรรบริการ=a, ยอดคงเหลือต่อรายการ=b),
         inputs=[allocation_table, remaining_table],
-        outputs=allocation_excel_file,
+        outputs=[allocation_excel_file, allocation_excel_status],
     )
 
 
@@ -1117,4 +1366,5 @@ if __name__ == "__main__":
         css=CUSTOM_CSS,
         server_name="0.0.0.0",
         server_port=int(os.environ.get("PORT", 7860)),
+        allowed_paths=[EXPORT_DIR],
     )

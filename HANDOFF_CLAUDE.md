@@ -89,6 +89,14 @@ session อย่างเดียวไม่พอโดยตั้งใจ
 - `requirements.txt` — `gradio`, `pandas`, `xlrd`, `psycopg2-binary`
 - `README.md` — ยังพูดถึง Hugging Face อยู่ (**ยังไม่ได้อัปเดต** ให้ตรงกับ Render — ควรแก้ทีหลัง)
 
+## หมายเหตุการพัฒนา (อ่านก่อนแก้ UI)
+
+- **`theme` และ `css` ต้องส่งที่ `demo.launch()` ไม่ใช่ `gr.Blocks()`** — Gradio 6.0 ย้ายกลับมาที่ `launch()` ถ้าใส่ผิดที่จะขึ้น UserWarning และธีมไม่ติด
+- **ไฟล์ที่ให้ดาวน์โหลดต้องอยู่ใน `EXPORT_DIR`** ซึ่งส่งเข้า `launch(allowed_paths=[...])` — Gradio 5+ ตอบ `403 File not allowed` สำหรับไฟล์นอกรายการนี้ นี่คือสาเหตุที่ปุ่ม Export เดิมกดแล้วไม่มีอะไรเกิดขึ้น (เขียนไฟล์ลง `tempfile.gettempdir()` ตรงๆ)
+- **`gr.Textbox` เรนเดอร์เป็น `<textarea>` โดยดีฟอลต์** ซึ่งกด Enter แล้วขึ้นบรรทัดใหม่ ไม่ยิง `.submit()` ถ้าต้องการให้กด Enter ส่งฟอร์มได้ ต้องใส่ `lines=1, max_lines=1` ให้เรนเดอร์เป็น `<input>`
+- **Gradio ครอบลูกของ `gr.Group` ด้วย `div.styler`** ที่เป็น flex item หดตามเนื้อหา ทำให้ panel ใน modal เหลือ ~286px จึงต้องมี CSS `.oppp-modal .styler { width: 100% }` และจัดกึ่งกลาง panel ด้วย `margin: 0 auto` (ใช้ `justify-content` ไม่ได้เพราะ Gradio วางเป็น column)
+- **รันในเครื่องไม่ได้ถ้าไม่มีเน็ต** — `gr.themes.GoogleFont("Sarabun")` ดึงฟอนต์ตอน `launch()` ถ้าเน็ตถูกบล็อกจะค้างเงียบๆ ไม่ error ให้สลับเป็นธีมธรรมดาเวลาทดสอบ local
+
 ## โครงสร้างหน้าเว็บใหม่
 
 1. **Accordion ซ่อนไว้บนสุด** (`🔒 สำหรับผู้ดูแลระบบ`, ปิดอยู่โดย default) — กรอก username/password login ที่นี่
