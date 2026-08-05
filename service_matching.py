@@ -42,6 +42,23 @@ def rule_for_amount(amount: float) -> dict | None:
     return None
 
 
+def rule_combo(amount: float) -> list[str] | None:
+    """The confirmed service bundle for `amount`, as concrete item names.
+
+    Returns None when no rule covers the amount, or when the rule itself says
+    the amount is ambiguous -- those still need a human, so they must not be
+    silently attributed to one interpretation.
+    """
+    rule = rule_for_amount(amount)
+    if rule is None:
+        return None
+    codes = rule.get("items")
+    if not codes:
+        return None
+    names = [NAME_BY_CODE.get(str(code)) for code in codes]
+    return [name for name in names if name] or None
+
+
 def explain_amount(amount: float) -> tuple[str, str]:
     """(status, คำอธิบาย) ของยอดหนึ่งยอด โดยยึดกติกาที่คนยืนยันไว้ก่อน
     ถ้าไม่มีกติกาจึงค่อยตกไปใช้การจับคู่อัตโนมัติ"""
@@ -50,6 +67,18 @@ def explain_amount(amount: float) -> tuple[str, str]:
         status = "🟡 กำกวม" if rule.get("kind") == "กำกวม" else "🟢 ตามกติกา"
         return status, rule["label"]
     return predict_combo_label(amount)
+
+
+def _load_name_by_code() -> dict[str, str]:
+    try:
+        with open(_RATES_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {str(item["code"]): item["name"] for item in data.get("items", [])}
+
+
+NAME_BY_CODE = _load_name_by_code()
 
 
 def _load_rate_index() -> dict[float, list[str]]:
@@ -215,6 +244,16 @@ def resolve_combo(amount: float) -> tuple[str, list[list[str]], float]:
     """
     if amount is None or amount <= 0:
         return "-", [], 0.0
+
+    # A confirmed rule wins over the arithmetic search. Several real amounts
+    # (195 = Triferdine + FP ยาฉีด) can also be reached by an unrelated pair of
+    # rates, so the search alone called them ambiguous and the facility totals
+    # dumped them into "ยอดที่ยังไม่จัดประเภท" even though a human had already
+    # settled what they are.
+    confirmed = rule_combo(amount)
+    if confirmed:
+        return "🟢 คาดการณ์", [confirmed], 0.0
+
     combos = match_combo(amount)
     if combos:
         if len(combos) == 1:
