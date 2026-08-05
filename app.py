@@ -259,14 +259,15 @@ table, thead, tbody, tr, td, th {
 }
 thead th { color: var(--oppp-accent) !important; }
 
-/* Compact cells so wide pivot tables (many item columns) stay readable
-   instead of stretching each column to fit the longest header text. */
+/* Compact cells so wide pivot tables (many item columns) stay readable.
+   Do NOT force white-space here -- that overrides each Dataframe's own
+   `wrap` setting and, combined with narrow auto-sized columns, stacks
+   short headers into a single letter per line. Let `wrap` control it. */
 .gradio-container table td,
 .gradio-container table th {
     padding: 4px 8px !important;
     font-size: 0.82rem !important;
     line-height: 1.3 !important;
-    white-space: normal !important;
 }
 """
 
@@ -843,7 +844,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             )
             summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
             summary_status = gr.Markdown()
-            all_facilities_table = gr.Dataframe(interactive=False, wrap=True)
+            all_facilities_table = gr.Dataframe(interactive=False, wrap=False, min_width=90)
             summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
             summary_excel_btn = gr.Button("📥 ดาวน์โหลด Excel")
             summary_excel_file = gr.File(label="ไฟล์ Excel")
