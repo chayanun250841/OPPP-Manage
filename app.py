@@ -355,15 +355,20 @@ thead th { color: var(--oppp-accent) !important; }
     font-size: 0.95rem !important;
     line-height: 1.45 !important;
 }
-/* Headers must stay horizontally readable even in the wide pivot table --
-   wrap onto extra lines rather than being squeezed one letter per line. */
+/* Headers wrap between words but never inside one. `overflow-wrap: anywhere`
+   shredded Thai headers a character per line ("ครั้" / "ง"); a min-width plus
+   the table's own horizontal scroll keeps them readable instead. */
 .gradio-container table th {
     white-space: normal !important;
-    word-break: normal !important;
-    overflow-wrap: anywhere !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+    min-width: 8.5rem !important;
     vertical-align: bottom !important;
     font-weight: 700 !important;
+    text-align: center !important;
 }
+.gradio-container table td { white-space: nowrap !important; }
 
 /* ---------- Tabs ---------- */
 .gradio-container .tab-nav button {
@@ -1137,7 +1142,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 "ตารางสรุปทุกหน่วยบริการพร้อมกันในหน้าเดียว — แทนที่สเปรดชีตที่เจ้าหน้าที่ต้องนั่งกรอกเอง "
                 "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢 หรือ 🟠 ใกล้เคียง) "
                 "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง — กดคำนวณใหม่หลังอัปโหลดข้อมูลเพิ่ม "
-                "หัวคอลัมน์ใช้รหัสย่อ ดูความหมายได้จากคำอธิบายด้านล่าง",
+                "· หัวคอลัมน์เป็นชื่อรายการแบบย่อ ดูชื่อเต็มตามประกาศได้ที่ 'คำอธิบายรายการ' ด้านล่าง "
+                "· ตารางเลื่อนดูทางแนวนอนได้",
                 elem_classes="hint-text",
             )
             summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
@@ -1146,7 +1152,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 # wrap=True + a wider min_width so headers read as words across
                 # lines instead of one letter per line in this very wide pivot.
                 all_facilities_table = gr.Dataframe(interactive=False, wrap=True, min_width=160)
-            with gr.Accordion("📖 คำอธิบายรหัสรายการ", open=False):
+            with gr.Accordion("📖 คำอธิบายรายการ (ชื่อย่อ → ชื่อเต็มตามประกาศ)", open=False):
                 summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
             summary_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
             summary_excel_status = gr.Markdown(elem_classes="hint-text")

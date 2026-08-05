@@ -231,11 +231,21 @@ def analyze_hcode(hcode: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
 TOTAL_ROW_LABEL = "รวมทั้งหมด"
 
 
+def item_header(item: dict) -> str:
+    """Column label for the pivot. Uses the item's short name -- a bare code
+    like '2.1)' told the reader nothing, and the full name is far too long for
+    a column that only holds a count."""
+    return item.get("short") or item["name"]
+
+
 def build_item_legend() -> str:
-    """Code -> full name legend, since the pivot table uses short codes as
-    column headers to keep columns readable."""
-    lines = [f"**{item['code']})** {item['name']} ({item['rate_claim']:,.0f} บาท)" for item in MATCHABLE_ITEMS]
-    return " · ".join(lines)
+    """Short name -> full official name, for the readers who need the exact
+    wording behind the shortened column headers."""
+    lines = [
+        f"**{item_header(item)}** = {item['name']} ({item['rate_claim']:,.0f} บาท · รหัส {item['code']})"
+        for item in MATCHABLE_ITEMS
+    ]
+    return "\n\n".join(lines)
 
 
 def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
@@ -261,13 +271,13 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
         matched_share_total = 0.0
         for item in MATCHABLE_ITEMS:
             name = item["name"]
-            code = item["code"]
+            label = item_header(item)
             count = count_by_item.get(name, 0)
             claim_amount = count * item["rate_claim"]
             share_rate = item.get("rate_facility_share")
             share_amount = count * share_rate if share_rate is not None else 0.0
-            row[f"{code}) ครั้ง"] = count
-            row[f"{code}) บาท"] = claim_amount
+            row[f"{label} (ครั้ง)"] = count
+            row[f"{label} (บาท)"] = claim_amount
             matched_claim_total += claim_amount
             matched_share_total += share_amount
 
@@ -292,7 +302,7 @@ def format_all_facilities_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
     for col in display.columns:
         if col in ("HCODE", "ชื่อหน่วยบริการ"):
             continue
-        if col.endswith("ครั้ง"):
+        if col.endswith("(ครั้ง)"):
             display[col] = display[col].map(lambda v: f"{int(v):,}")
         else:
             display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
