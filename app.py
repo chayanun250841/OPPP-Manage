@@ -883,11 +883,10 @@ def build_all_facilities_summary():
     if pivot.empty:
         return service_analysis.render_all_facilities_html(pivot), "ไม่มีข้อมูล", empty
     updated = f"🟢 คำนวณล่าสุด {datetime.now():%d/%m/%Y %H:%M:%S} น."
-    return (
-        service_analysis.render_all_facilities_html(pivot),
-        updated,
-        service_analysis.format_all_facilities_pivot(pivot),
-    )
+    # The State keeps the raw frame, not a formatted one: the Excel writer
+    # rebuilds the same grouped header from the "group | sub" column names and
+    # writes real numbers rather than pre-formatted strings.
+    return service_analysis.render_all_facilities_html(pivot), updated, pivot
 
 
 # ---------------------------------------------------------------------------
@@ -1067,6 +1066,19 @@ def add_allocation_db(
     if amount > remaining:
         return f"⚠️ บันทึกแล้ว แต่จัดสรรเกินยอดคงเหลือ {remaining:,.2f} บาท (เกินไป {amount - remaining:,.2f} บาท)"
     return f"บันทึกการจัดสรรแล้ว คงเหลือหลังจัดสรร {remaining - amount:,.2f} บาท"
+
+
+def export_all_facilities_excel(pivot: object):
+    """Excel for the all-facilities pivot, carrying the same two-row merged
+    header as the table on screen."""
+    if not isinstance(pivot, pd.DataFrame) or pivot.empty:
+        return None, "⚠️ ยังไม่มีข้อมูล — กด 'คำนวณสรุปทุกหน่วยบริการ' ก่อน"
+    try:
+        path = export_path("สรุปทุกหน่วยบริการ", "xlsx")
+        service_analysis.write_all_facilities_excel(pivot, path)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"❌ สร้างไฟล์ Excel ไม่สำเร็จ: {exc}"
+    return path, f"✅ พร้อมดาวน์โหลด · {len(pivot):,} แถว"
 
 
 def export_ledger_csv():
@@ -1521,7 +1533,7 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     )
     wire_download(
         summary_excel_btn,
-        lambda df: export_excel(df, "สรุปทุกหน่วยบริการ"),
+        export_all_facilities_excel,
         all_facilities_data, summary_excel_file, summary_excel_status,
     )
     wire_download(

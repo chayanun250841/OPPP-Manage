@@ -304,8 +304,9 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
 
 
 def format_all_facilities_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
-    """Flatten the grouped columns for the Excel export, where a spreadsheet
-    reader wants one self-describing label per column."""
+    """Flatten the grouped columns into one label per column. Kept for any
+    caller that wants a plain frame; the Excel export uses the merged-header
+    writer below so the workbook matches what the page shows."""
     if pivot.empty:
         return pivot
     display = pivot.copy()
@@ -318,6 +319,88 @@ def format_all_facilities_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
             display[col] = display[col].map(lambda v: f"{float(v):,.2f}")
     display.columns = [c.replace(" | ", " - ") for c in display.columns]
     return display
+
+
+def _column_groups(value_columns: list[str]) -> list[tuple[str, list[str]]]:
+    groups: list[tuple[str, list[str]]] = []
+    for column in value_columns:
+        group, sub = _split_column(column)
+        if groups and groups[-1][0] == group:
+            groups[-1][1].append(sub)
+        else:
+            groups.append((group, [sub]))
+    return groups
+
+
+def write_all_facilities_excel(pivot: pd.DataFrame, path: str) -> None:
+    """Write the pivot with the same two-row merged header the page shows.
+
+    pandas' to_excel would flatten the grouped columns into one label per
+    column, so the workbook stopped looking like the table it came from.
+    Values are written as real numbers with display formats, so totals and
+    sorting still work in the spreadsheet.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    value_columns = [c for c in pivot.columns if c not in LABEL_COLUMNS]
+    groups = _column_groups(value_columns)
+
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "สรุปทุกหน่วยบริการ"
+
+    thin = Side(style="thin", color="B7C9BD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill = PatternFill("solid", fgColor="E8F1EB")
+    head_font = Font(bold=True, color="0F5C33")
+    centre = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for index, label in enumerate(LABEL_COLUMNS, start=1):
+        sheet.cell(row=1, column=index, value=label)
+        sheet.merge_cells(start_row=1, start_column=index, end_row=2, end_column=index)
+
+    column = len(LABEL_COLUMNS) + 1
+    for group, subs in groups:
+        sheet.cell(row=1, column=column, value=group)
+        if len(subs) > 1:
+            sheet.merge_cells(start_row=1, start_column=column, end_row=1, end_column=column + len(subs) - 1)
+        for offset, sub in enumerate(subs):
+            sheet.cell(row=2, column=column + offset, value=sub)
+        column += len(subs)
+
+    for row in sheet["A1":f"{get_column_letter(column - 1)}2"]:
+        for cell in row:
+            cell.fill = head_fill
+            cell.font = head_font
+            cell.alignment = centre
+            cell.border = border
+
+    for offset, record in enumerate(pivot.to_dict(orient="records")):
+        row_index = 3 + offset
+        is_total = str(record.get("HCODE", "")) == TOTAL_ROW_LABEL
+        for index, label in enumerate(LABEL_COLUMNS, start=1):
+            cell = sheet.cell(row=row_index, column=index, value=record.get(label, ""))
+            cell.border = border
+            if is_total:
+                cell.font = Font(bold=True)
+        for index, name in enumerate(value_columns, start=len(LABEL_COLUMNS) + 1):
+            _group, sub = _split_column(name)
+            raw = record.get(name, 0)
+            value = int(raw) if sub == COUNT_SUB else round(float(raw), 2)
+            cell = sheet.cell(row=row_index, column=index, value=value)
+            cell.number_format = "#,##0" if sub == COUNT_SUB else "#,##0.00"
+            cell.border = border
+            if is_total:
+                cell.font = Font(bold=True)
+
+    sheet.column_dimensions["A"].width = 10
+    sheet.column_dimensions["B"].width = 38
+    for index in range(len(LABEL_COLUMNS) + 1, column):
+        sheet.column_dimensions[get_column_letter(index)].width = 14
+    sheet.freeze_panes = "C3"
+    book.save(path)
 
 
 def _split_column(column: str) -> tuple[str, str]:
