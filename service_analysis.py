@@ -105,11 +105,18 @@ ADJUSTMENTS, ADJUSTMENT_WARNINGS = _load_adjustments()
 
 
 def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> list[str]:
-    """Apply the overrides for one facility in place; return the notes to show.
+    """Apply the overrides for one facility in place; return the rows to show.
 
     A delta that would push a count below zero is refused for the whole entry --
     a facility cannot have delivered fewer than zero of a service, and applying
     half an entry would silently break the zero-baht guarantee.
+
+    An applied override adds no row of its own: the table shows the adjusted
+    counts as they are. What was changed, by whom, when and why stays recorded
+    in assets/manual_adjustments.json (and in this repo's history), which is the
+    only place to look to tell an adjusted count from a matched one. Rejected
+    entries still report themselves -- those are configuration errors somebody
+    has to fix, not adjustments.
     """
     notes: list[str] = list(ADJUSTMENT_WARNINGS)
     if not hcode:
@@ -118,14 +125,8 @@ def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> list[str]:
         if any(counts.get(name, 0) + delta < 0 for name, delta in entry["deltas"].items()):
             notes.append(f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: จำนวนครั้งที่หักออกมากกว่าที่มีอยู่จริง")
             continue
-        detail = " / ".join(
-            f"{name} {delta:+d}" for name, delta in entry["deltas"].items()
-        )
         for name, delta in entry["deltas"].items():
             counts[name] = counts.get(name, 0) + delta
-        notes.append(f"✏️ ปรับด้วยมือ (ยอดเงินรวมเท่าเดิม): {detail}")
-        if entry["reason"]:
-            notes.append(f"    เหตุผล: {entry['reason']}")
     return notes
 
 PEOPLE_COLUMNS = ["HCODE", "PID", "ชื่อ-นามสกุล", "PP", "FS", "ยอดรวม"]
@@ -229,8 +230,9 @@ def summarize_item_counts(predictions: pd.DataFrame, hcode: str | None = None) -
         return pd.DataFrame(columns=COUNT_COLUMNS)
     frame = pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
     if adjustment_notes:
-        # Notes sit at the bottom with no count of their own, so they never
-        # enter a total and never get sorted into the middle of the services.
+        # Only rejected overrides reach here. They sit at the bottom with no
+        # count of their own, so they never enter a total and never get sorted
+        # into the middle of the services.
         note_rows = pd.DataFrame([{"รายการบริการ": note, "จำนวนครั้ง": 0} for note in adjustment_notes])
         frame = pd.concat([frame, note_rows], ignore_index=True)
     return frame
