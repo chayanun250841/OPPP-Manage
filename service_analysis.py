@@ -18,6 +18,7 @@ match. Each record's PP and FS amounts are decomposed independently.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from html import escape
 
@@ -25,6 +26,8 @@ import pandas as pd
 
 import db
 import service_matching
+
+logger = logging.getLogger(__name__)
 
 _RATES_PATH = os.path.join(os.path.dirname(__file__), "assets", "service_rates.json")
 _ADJUSTMENTS_PATH = os.path.join(os.path.dirname(__file__), "assets", "manual_adjustments.json")
@@ -55,24 +58,30 @@ RATE_PROVINCIAL_BY_NAME = {
 # Used when a facility confirms a service was delivered but the compensation
 # data has no amount the matcher could attribute to it. An override may only
 # move counts between items -- never create money -- so every entry must net to
-# zero baht at rate_claim. An entry that does not is dropped and reported on the
-# table instead of silently changing the facility's total.
+# zero baht at rate_claim. An entry that does not is dropped rather than allowed
+# to change the facility's total.
+#
+# Nothing about an override reaches the page: neither the applied ones nor the
+# rejected ones (requested 2026-08-17). A rejection is still a real problem --
+# the counts somebody expected are simply not there -- so it goes to the server
+# log, which on Render means Logs. Read it after editing the file; the page will
+# look perfectly normal either way.
 # ---------------------------------------------------------------------------
 
 _ADJUSTMENT_TOLERANCE = 0.01
 
 
-def _load_adjustments() -> tuple[dict[str, list[dict]], list[str]]:
+def _load_adjustments() -> dict[str, list[dict]]:
     try:
         with open(_ADJUSTMENTS_PATH, "r", encoding="utf-8") as file:
             data = json.load(file)
     except FileNotFoundError:
-        return {}, []
+        return {}
     except (OSError, json.JSONDecodeError) as exc:  # noqa: BLE001
-        return {}, [f"⚠️ อ่านแฟ้มการปรับด้วยมือไม่สำเร็จ: {exc}"]
+        logger.warning("อ่านแฟ้มการปรับด้วยมือไม่สำเร็จ: %s", exc)
+        return {}
 
     valid: dict[str, list[dict]] = {}
-    warnings: list[str] = []
     for entry in data.get("adjustments", []):
         hcode = str(entry.get("hcode", "")).strip()
         deltas: dict[str, int] = {}
@@ -87,47 +96,49 @@ def _load_adjustments() -> tuple[dict[str, list[dict]], list[str]]:
             deltas[name] = deltas.get(name, 0) + delta
             money += delta * RATE_FULL_BY_NAME[name]
         if broken:
-            warnings.append(f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: {broken}")
+            logger.warning("ข้ามการปรับด้วยมือของ %s: %s", hcode, broken)
             continue
         if not hcode or not deltas:
             continue
         if abs(money) > _ADJUSTMENT_TOLERANCE:
-            warnings.append(
-                f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: ยอดเงินไม่สมดุล ({money:+,.2f} บาท) "
-                "ต้องเพิ่มและลดให้หักล้างกันเป็น 0 บาท"
+            # The baht figure is formatted here, not left to the log call:
+            # %-style formatting has no thousands separator, so "%+,.2f" raises
+            # inside logging and the warning is swallowed -- exactly the one
+            # message that must never go missing.
+            logger.warning(
+                "ข้ามการปรับด้วยมือของ %s: ยอดเงินไม่สมดุล (%s บาท) ต้องเพิ่มและลดให้หักล้างกันเป็น 0 บาท",
+                hcode,
+                f"{money:+,.2f}",
             )
             continue
         valid.setdefault(hcode, []).append({"deltas": deltas, "reason": entry.get("reason", ""), "money": money})
-    return valid, warnings
+    return valid
 
 
-ADJUSTMENTS, ADJUSTMENT_WARNINGS = _load_adjustments()
+ADJUSTMENTS = _load_adjustments()
 
 
-def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> list[str]:
-    """Apply the overrides for one facility in place; return the rows to show.
+def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> None:
+    """Apply the overrides for one facility in place.
 
     A delta that would push a count below zero is refused for the whole entry --
     a facility cannot have delivered fewer than zero of a service, and applying
     half an entry would silently break the zero-baht guarantee.
 
-    An applied override adds no row of its own: the table shows the adjusted
-    counts as they are. What was changed, by whom, when and why stays recorded
-    in assets/manual_adjustments.json (and in this repo's history), which is the
-    only place to look to tell an adjusted count from a matched one. Rejected
-    entries still report themselves -- those are configuration errors somebody
-    has to fix, not adjustments.
+    Nothing is reported back to the caller: the table shows the adjusted counts
+    exactly as it shows matched ones. What was changed, by whom, when and why
+    lives only in assets/manual_adjustments.json and this repo's history --
+    there is no other way to tell an adjusted count from a matched one, so that
+    file is the audit trail and must not be pruned. Refusals go to the log.
     """
-    notes: list[str] = list(ADJUSTMENT_WARNINGS)
     if not hcode:
-        return notes
+        return
     for entry in ADJUSTMENTS.get(str(hcode), []):
         if any(counts.get(name, 0) + delta < 0 for name, delta in entry["deltas"].items()):
-            notes.append(f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: จำนวนครั้งที่หักออกมากกว่าที่มีอยู่จริง")
+            logger.warning("ข้ามการปรับด้วยมือของ %s: จำนวนครั้งที่หักออกมากกว่าที่มีอยู่จริง", hcode)
             continue
         for name, delta in entry["deltas"].items():
             counts[name] = counts.get(name, 0) + delta
-    return notes
 
 PEOPLE_COLUMNS = ["HCODE", "PID", "ชื่อ-นามสกุล", "PP", "FS", "ยอดรวม"]
 PREDICTION_COLUMNS = ["PID", "ชื่อ-นามสกุล", "PP", "FS", "บริการที่คาดการณ์ (PP)", "บริการที่คาดการณ์ (FS)", "สถานะ"]
@@ -214,7 +225,7 @@ def summarize_item_counts(predictions: pd.DataFrame, hcode: str | None = None) -
             elif status == "🔴 ไม่พบ":
                 notfound += 1
 
-    adjustment_notes = _apply_adjustments(counts, hcode)
+    _apply_adjustments(counts, hcode)
 
     rows = [{"รายการบริการ": name, "จำนวนครั้ง": count} for name, count in counts.items() if count > 0]
     if approx_count:
@@ -228,14 +239,7 @@ def summarize_item_counts(predictions: pd.DataFrame, hcode: str | None = None) -
         rows.append({"รายการบริการ": "🔴 ไม่พบรายการที่ตรงกัน", "จำนวนครั้ง": notfound})
     if not rows:
         return pd.DataFrame(columns=COUNT_COLUMNS)
-    frame = pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
-    if adjustment_notes:
-        # Only rejected overrides reach here. They sit at the bottom with no
-        # count of their own, so they never enter a total and never get sorted
-        # into the middle of the services.
-        note_rows = pd.DataFrame([{"รายการบริการ": note, "จำนวนครั้ง": 0} for note in adjustment_notes])
-        frame = pd.concat([frame, note_rows], ignore_index=True)
-    return frame
+    return pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
 
 
 def build_reconciliation(counts: pd.DataFrame) -> pd.DataFrame:
