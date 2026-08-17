@@ -27,6 +27,7 @@ import db
 import service_matching
 
 _RATES_PATH = os.path.join(os.path.dirname(__file__), "assets", "service_rates.json")
+_ADJUSTMENTS_PATH = os.path.join(os.path.dirname(__file__), "assets", "manual_adjustments.json")
 
 
 def _load_items() -> list[dict]:
@@ -40,11 +41,92 @@ def _load_items() -> list[dict]:
 
 MATCHABLE_ITEMS = _load_items()
 ITEM_NAMES = [item["name"] for item in MATCHABLE_ITEMS]
+NAME_BY_CODE = {str(item["code"]): item["name"] for item in MATCHABLE_ITEMS}
 RATE_FULL_BY_NAME = {item["name"]: float(item["rate_claim"]) for item in MATCHABLE_ITEMS}
 RATE_PROVINCIAL_BY_NAME = {
     item["name"]: (float(item["rate_facility_share"]) if item.get("rate_facility_share") is not None else None)
     for item in MATCHABLE_ITEMS
 }
+
+
+# ---------------------------------------------------------------------------
+# Manual per-facility count overrides (assets/manual_adjustments.json)
+#
+# Used when a facility confirms a service was delivered but the compensation
+# data has no amount the matcher could attribute to it. An override may only
+# move counts between items -- never create money -- so every entry must net to
+# zero baht at rate_claim. An entry that does not is dropped and reported on the
+# table instead of silently changing the facility's total.
+# ---------------------------------------------------------------------------
+
+_ADJUSTMENT_TOLERANCE = 0.01
+
+
+def _load_adjustments() -> tuple[dict[str, list[dict]], list[str]]:
+    try:
+        with open(_ADJUSTMENTS_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        return {}, []
+    except (OSError, json.JSONDecodeError) as exc:  # noqa: BLE001
+        return {}, [f"⚠️ อ่านแฟ้มการปรับด้วยมือไม่สำเร็จ: {exc}"]
+
+    valid: dict[str, list[dict]] = {}
+    warnings: list[str] = []
+    for entry in data.get("adjustments", []):
+        hcode = str(entry.get("hcode", "")).strip()
+        deltas: dict[str, int] = {}
+        money = 0.0
+        broken = ""
+        for item in entry.get("items", []):
+            name = NAME_BY_CODE.get(str(item.get("code")))
+            if name is None:
+                broken = f"รหัสรายการ {item.get('code')} ไม่อยู่ในรายการที่จับคู่ได้"
+                break
+            delta = int(item.get("delta", 0))
+            deltas[name] = deltas.get(name, 0) + delta
+            money += delta * RATE_FULL_BY_NAME[name]
+        if broken:
+            warnings.append(f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: {broken}")
+            continue
+        if not hcode or not deltas:
+            continue
+        if abs(money) > _ADJUSTMENT_TOLERANCE:
+            warnings.append(
+                f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: ยอดเงินไม่สมดุล ({money:+,.2f} บาท) "
+                "ต้องเพิ่มและลดให้หักล้างกันเป็น 0 บาท"
+            )
+            continue
+        valid.setdefault(hcode, []).append({"deltas": deltas, "reason": entry.get("reason", ""), "money": money})
+    return valid, warnings
+
+
+ADJUSTMENTS, ADJUSTMENT_WARNINGS = _load_adjustments()
+
+
+def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> list[str]:
+    """Apply the overrides for one facility in place; return the notes to show.
+
+    A delta that would push a count below zero is refused for the whole entry --
+    a facility cannot have delivered fewer than zero of a service, and applying
+    half an entry would silently break the zero-baht guarantee.
+    """
+    notes: list[str] = list(ADJUSTMENT_WARNINGS)
+    if not hcode:
+        return notes
+    for entry in ADJUSTMENTS.get(str(hcode), []):
+        if any(counts.get(name, 0) + delta < 0 for name, delta in entry["deltas"].items()):
+            notes.append(f"⚠️ ข้ามการปรับด้วยมือของ {hcode}: จำนวนครั้งที่หักออกมากกว่าที่มีอยู่จริง")
+            continue
+        detail = " / ".join(
+            f"{name} {delta:+d}" for name, delta in entry["deltas"].items()
+        )
+        for name, delta in entry["deltas"].items():
+            counts[name] = counts.get(name, 0) + delta
+        notes.append(f"✏️ ปรับด้วยมือ (ยอดเงินรวมเท่าเดิม): {detail}")
+        if entry["reason"]:
+            notes.append(f"    เหตุผล: {entry['reason']}")
+    return notes
 
 PEOPLE_COLUMNS = ["HCODE", "PID", "ชื่อ-นามสกุล", "PP", "FS", "ยอดรวม"]
 PREDICTION_COLUMNS = ["PID", "ชื่อ-นามสกุล", "PP", "FS", "บริการที่คาดการณ์ (PP)", "บริการที่คาดการณ์ (FS)", "สถานะ"]
@@ -97,12 +179,15 @@ def predict_records(people: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def summarize_item_counts(predictions: pd.DataFrame) -> pd.DataFrame:
+def summarize_item_counts(predictions: pd.DataFrame, hcode: str | None = None) -> pd.DataFrame:
     """Step 4: count item hits across the facility. Confident (🟢) and
     closest-match (🟠) hits are both attributed to their matched item, since
     the goal is to match amounts as closely as possible; truly ambiguous (🟡)
     and unmatched (🔴) amounts are kept visible as their own catch-all rows
-    rather than silently dropped or guessed into a specific item."""
+    rather than silently dropped or guessed into a specific item.
+
+    `hcode` is optional only so old callers keep working; pass it whenever it is
+    known, otherwise that facility's manual overrides are skipped."""
     if predictions.empty:
         return pd.DataFrame(columns=COUNT_COLUMNS)
 
@@ -128,6 +213,8 @@ def summarize_item_counts(predictions: pd.DataFrame) -> pd.DataFrame:
             elif status == "🔴 ไม่พบ":
                 notfound += 1
 
+    adjustment_notes = _apply_adjustments(counts, hcode)
+
     rows = [{"รายการบริการ": name, "จำนวนครั้ง": count} for name, count in counts.items() if count > 0]
     if approx_count:
         rows.append({
@@ -140,7 +227,13 @@ def summarize_item_counts(predictions: pd.DataFrame) -> pd.DataFrame:
         rows.append({"รายการบริการ": "🔴 ไม่พบรายการที่ตรงกัน", "จำนวนครั้ง": notfound})
     if not rows:
         return pd.DataFrame(columns=COUNT_COLUMNS)
-    return pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
+    frame = pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
+    if adjustment_notes:
+        # Notes sit at the bottom with no count of their own, so they never
+        # enter a total and never get sorted into the middle of the services.
+        note_rows = pd.DataFrame([{"รายการบริการ": note, "จำนวนครั้ง": 0} for note in adjustment_notes])
+        frame = pd.concat([frame, note_rows], ignore_index=True)
+    return frame
 
 
 def build_reconciliation(counts: pd.DataFrame) -> pd.DataFrame:
@@ -214,7 +307,7 @@ def analyze_hcode(hcode: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
     """Run the full 5-step pipeline for one facility."""
     people = get_people_for_hcode(hcode)
     predictions = predict_records(people)
-    counts = summarize_item_counts(predictions)
+    counts = summarize_item_counts(predictions, hcode)
     reconciliation = build_reconciliation(counts)
     return (
         format_people_display(people),
@@ -271,7 +364,7 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
 
         people = get_people_for_hcode(hcode)
         predictions = predict_records(people)
-        counts = summarize_item_counts(predictions)
+        counts = summarize_item_counts(predictions, hcode)
         count_by_item = {c["รายการบริการ"]: int(c["จำนวนครั้ง"]) for c in counts.to_dict(orient="records")}
 
         row: dict[str, object] = {"HCODE": hcode, "ชื่อหน่วยบริการ": hcode_names.get(hcode, "")}
