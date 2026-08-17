@@ -515,7 +515,7 @@ def render_all_facilities_html(pivot: pd.DataFrame) -> str:
     The numbers are the same ones format_all_facilities_pivot() exports.
     """
     if pivot.empty:
-        return "<p class='hint-text'>ยังไม่มีข้อมูล — กดปุ่มคำนวณหลังอัปโหลดไฟล์แล้ว</p>"
+        return "<p class='hint-text'>ยังไม่มีข้อมูล — ตารางจะขึ้นเองเมื่อมีข้อมูลในระบบ (ไม่ต้องกดอะไร)</p>"
 
     value_columns = [c for c in pivot.columns if c not in LABEL_COLUMNS]
 

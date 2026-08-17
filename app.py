@@ -1171,6 +1171,26 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                 with gr.Accordion("🔍 ตารางรายละเอียดบริการของหน่วยที่เลือก", open=True):
                     breakdown_table = gr.Dataframe(value=pd.DataFrame(columns=BREAKDOWN_COLUMNS), interactive=False, wrap=True)
 
+        with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
+            gr.Markdown(
+                "ตารางสรุปทุกหน่วยบริการพร้อมกันในหน้าเดียว — แทนที่สเปรดชีตที่เจ้าหน้าที่ต้องนั่งกรอกเอง "
+                "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢 หรือ 🟠 ใกล้เคียง) "
+                "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง "
+                "· คำนวณให้อัตโนมัติตั้งแต่เปิดหน้า และคำนวณซ้ำเองทุก 5 นาที รวมทั้งทันทีหลังอัปโหลดข้อมูลใหม่ "
+                "· หัวคอลัมน์เป็นชื่อรายการแบบย่อ ดูชื่อเต็มตามประกาศได้ที่ 'คำอธิบายรายการ' ด้านล่าง "
+                "· ตารางเลื่อนดูทางแนวนอนได้",
+                elem_classes="hint-text",
+            )
+            summary_status = gr.Markdown("กำลังคำนวณ...")
+            all_facilities_data = gr.State(pd.DataFrame())
+            with gr.Accordion("📋 ตารางสรุปทุกหน่วยบริการ", open=True):
+                all_facilities_table = gr.HTML()
+            with gr.Accordion("📖 คำอธิบายรายการ (ชื่อย่อ → ชื่อเต็มตามประกาศ)", open=False):
+                summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
+            summary_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
+            summary_excel_file = gr.File(label="ไฟล์ล่าสุด (สำรอง)")
+            summary_excel_status = gr.Markdown(elem_classes="hint-text")
+
         with gr.Tab("🔢 ยอดที่พบบ่อย"):
             with gr.Group(elem_classes="card"):
                 gr.Markdown(
@@ -1185,12 +1205,19 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
                     )
 
     refresh_timer = gr.Timer(30)
+    # The pivot is far heavier than the KPI queries -- one query per facility
+    # plus combo matching over every record -- and it only changes when someone
+    # uploads. Recomputing it on the 30s tick would keep the free instance busy
+    # for nothing, so it gets its own slow timer and an immediate rerun after
+    # each upload, where the change actually happens.
+    summary_timer = gr.Timer(300)
 
     dashboard_outputs = [
         kpi_total, kpi_pp, kpi_fs, kpi_count, kpi_hcode, kpi_latest,
         ranking_table, updated_badge,
     ]
     frequency_outputs = [frequency_table, frequency_note]
+    summary_outputs = [all_facilities_table, summary_status, all_facilities_data]
 
     # -----------------------------------------------------------------
     # Developer console -- a modal overlay, opened from the top bar and
@@ -1288,26 +1315,6 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
             facility_excel_file = gr.File(label="ไฟล์ล่าสุด (สำรอง)")
             facility_excel_status = gr.Markdown(elem_classes="hint-text")
 
-        with gr.Tab("📋 สรุปทุกหน่วยบริการ"):
-            gr.Markdown(
-                "ตารางสรุปทุกหน่วยบริการพร้อมกันในหน้าเดียว — แทนที่สเปรดชีตที่เจ้าหน้าที่ต้องนั่งกรอกเอง "
-                "แต่ละรายการมี 2 คอลัมน์ (ครั้ง / บาท ตามอัตราเต็มสปสช.) นับเฉพาะรายการที่คาดการณ์ชัดเจน (🟢 หรือ 🟠 ใกล้เคียง) "
-                "ส่วนที่ยังไม่แน่ชัดหรือไม่พบจะรวมอยู่ใน 'ยอดที่ยังไม่จัดประเภท' ท้ายตาราง — กดคำนวณใหม่หลังอัปโหลดข้อมูลเพิ่ม "
-                "· หัวคอลัมน์เป็นชื่อรายการแบบย่อ ดูชื่อเต็มตามประกาศได้ที่ 'คำอธิบายรายการ' ด้านล่าง "
-                "· ตารางเลื่อนดูทางแนวนอนได้",
-                elem_classes="hint-text",
-            )
-            summary_refresh_btn = gr.Button("🔄 คำนวณสรุปทุกหน่วยบริการ", variant="primary")
-            summary_status = gr.Markdown()
-            all_facilities_data = gr.State(pd.DataFrame())
-            with gr.Accordion("📋 ตารางสรุปทุกหน่วยบริการ", open=True):
-                all_facilities_table = gr.HTML()
-            with gr.Accordion("📖 คำอธิบายรายการ (ชื่อย่อ → ชื่อเต็มตามประกาศ)", open=False):
-                summary_legend = gr.Markdown(service_analysis.build_item_legend(), elem_classes="hint-text")
-            summary_excel_btn = gr.DownloadButton("📥 ดาวน์โหลด Excel")
-            summary_excel_file = gr.File(label="ไฟล์ล่าสุด (สำรอง)")
-            summary_excel_status = gr.Markdown(elem_classes="hint-text")
-
         with gr.Tab("🧮 จัดสรรบริการ"):
             gr.Markdown(
                 "จัดสรรยอด PP/FS ของรายการที่ไม่แจกแจงบริการ เช่น ตรวจหลังคลอด, ตรวจฟัน "
@@ -1343,14 +1350,19 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
     # Wiring
     # -----------------------------------------------------------------
 
+    # The KPIs land first, then the slower tables fill in behind them, so the
+    # page is never blank waiting on the heaviest query.
     demo.load(refresh_dashboard, outputs=dashboard_outputs).then(
         build_amount_frequency, outputs=frequency_outputs
     ).then(
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
+    ).then(
+        build_all_facilities_summary, outputs=summary_outputs
     )
     refresh_timer.tick(refresh_dashboard, outputs=dashboard_outputs).then(
         build_amount_frequency, outputs=frequency_outputs
     )
+    summary_timer.tick(build_all_facilities_summary, outputs=summary_outputs)
 
     ranking_table.select(on_select_facility, outputs=[breakdown_label, breakdown_table])
 
@@ -1358,11 +1370,6 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         analyze_facility_ui,
         inputs=facility_dropdown,
         outputs=[facility_people_table, facility_prediction_table, facility_count_table, facility_reconcile_table],
-    )
-
-    summary_refresh_btn.click(
-        build_all_facilities_summary,
-        outputs=[all_facilities_table, summary_status, all_facilities_data],
     )
 
     # --- Theme toggle: pure client-side so the choice survives reloads ---
@@ -1440,6 +1447,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         refresh_batches, outputs=[batch_table, batch_dropdown, batch_status]
     ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    ).then(
+        build_all_facilities_summary, outputs=summary_outputs
     )
 
     rollback_btn.click(rollback_selected, inputs=batch_dropdown, outputs=batch_status).then(
@@ -1448,6 +1457,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         build_amount_frequency, outputs=frequency_outputs
     ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    ).then(
+        build_all_facilities_summary, outputs=summary_outputs
     )
 
     reset_btn.click(
@@ -1458,6 +1469,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         build_amount_frequency, outputs=frequency_outputs
     ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    ).then(
+        build_all_facilities_summary, outputs=summary_outputs
     )
 
     restore_btn.click(restore_selected, inputs=batch_dropdown, outputs=batch_status).then(
@@ -1466,6 +1479,8 @@ with gr.Blocks(title="OPPP Compensation Dashboard") as demo:
         build_amount_frequency, outputs=frequency_outputs
     ).then(
         refresh_admin_views, inputs=role_state, outputs=admin_view_outputs
+    ).then(
+        build_all_facilities_summary, outputs=summary_outputs
     )
 
     add_btn.click(
