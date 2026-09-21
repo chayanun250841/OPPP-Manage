@@ -332,8 +332,12 @@ def get_records_for_hcode(hcode: str) -> pd.DataFrame:
         JOIN upload_batches b ON b.batch_id = r.batch_id
         WHERE b.status = 'active' AND r.hcode = %s
     """
-    with get_connection() as conn:
-        return pd.read_sql(query, conn, params=(hcode,))
+    try:
+        with get_connection() as conn:
+            return pd.read_sql(query, conn, params=(hcode,))
+    except Exception:
+        rows = _load_public_snapshot().get("records_by_hcode", {}).get(str(hcode), [])
+        return pd.DataFrame(rows, columns=["record_code", "pp", "fs"])
 
 
 def get_people_records_for_hcode(hcode: str) -> pd.DataFrame:

@@ -153,11 +153,30 @@ _STATUS_RANK = {"🔴 ไม่พบ": 0, "🟠 ใกล้เคียง": 1
 
 
 def get_people_for_hcode(hcode: str) -> pd.DataFrame:
-    """Step 1+2: raw people list for one facility."""
+    """Step 1+2: raw people list for one facility.
+
+    If the private database is unavailable, fall back to the public-safe
+    amount-only snapshot. PID/name stay blank, while PP/FS still allow the
+    service classifier and all-facilities summary to work.
+    """
     try:
         people = db.get_people_records_for_hcode(hcode)
     except Exception:  # noqa: BLE001
-        return pd.DataFrame(columns=PEOPLE_COLUMNS)
+        safe = db.get_records_for_hcode(hcode)
+        if safe.empty:
+            return pd.DataFrame(columns=PEOPLE_COLUMNS)
+        pp = safe["pp"].astype(float)
+        fs = safe["fs"].astype(float)
+        people = pd.DataFrame(
+            {
+                "HCODE": [str(hcode)] * len(safe),
+                "PID": [""] * len(safe),
+                "ชื่อ-นามสกุล": [""] * len(safe),
+                "PP": pp,
+                "FS": fs,
+                "ยอดรวม": pp + fs,
+            }
+        )
     if people.empty:
         return pd.DataFrame(columns=PEOPLE_COLUMNS)
     return people[PEOPLE_COLUMNS]
