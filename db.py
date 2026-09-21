@@ -1,12 +1,24 @@
 """Persistent storage layer for the OPPP dashboard, backed by Supabase Postgres."""
 from __future__ import annotations
 
+import json
 import os
 import uuid
+from functools import lru_cache
 
 import pandas as pd
 import psycopg2
 import psycopg2.extras
+
+PUBLIC_SNAPSHOT_PATH = os.path.join(os.path.dirname(__file__), "assets", "public_snapshot_2569.json")
+
+
+@lru_cache(maxsize=1)
+def _load_public_snapshot() -> dict:
+    """Read the public, aggregate-only fallback used when Postgres is unavailable."""
+    with open(PUBLIC_SNAPSHOT_PATH, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS upload_batches (
@@ -215,12 +227,15 @@ def get_overall_totals() -> dict:
         JOIN upload_batches b ON b.batch_id = r.batch_id
         WHERE b.status = 'active'
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query)
-            columns = [desc[0] for desc in cur.description]
-            row = cur.fetchone()
-    return dict(zip(columns, row))
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                columns = [desc[0] for desc in cur.description]
+                row = cur.fetchone()
+        return dict(zip(columns, row))
+    except Exception:
+        return dict(_load_public_snapshot()["overall"])
 
 
 def get_monthly_trend() -> pd.DataFrame:
@@ -255,8 +270,25 @@ def get_summary_by_hcode() -> pd.DataFrame:
         GROUP BY r.hcode
         ORDER BY "ยอดชดเชยทั้งสิ้น" DESC, "HCODE" ASC
     """
-    with get_connection() as conn:
-        return pd.read_sql(query, conn)
+    try:
+        with get_connection() as conn:
+            return pd.read_sql(query, conn)
+    except Exception:
+        rows = _load_public_snapshot().get("summary_by_hcode", [])
+        return pd.DataFrame(
+            [
+                {
+                    "HCODE": row["hcode"],
+                    "รายการ": row["count"],
+                    "PP": row["pp"],
+                    "FS": row["fs"],
+                    "ยอดรวม": row["total"],
+                    "ยอดชดเชยทั้งสิ้น": row["grand_total"],
+                }
+                for row in rows
+            ],
+            columns=["HCODE", "รายการ", "PP", "FS", "ยอดรวม", "ยอดชดเชยทั้งสิ้น"],
+        )
 
 
 def get_amount_frequency(limit: int = 30) -> pd.DataFrame:
@@ -274,8 +306,22 @@ def get_amount_frequency(limit: int = 30) -> pd.DataFrame:
         ORDER BY "จำนวนครั้ง" DESC, "ยอดชดเชยทั้งสิ้น" DESC
         LIMIT %s
     """
-    with get_connection() as conn:
-        return pd.read_sql(query, conn, params=(limit,))
+    try:
+        with get_connection() as conn:
+            return pd.read_sql(query, conn, params=(limit,))
+    except Exception:
+        rows = _load_public_snapshot().get("amount_frequency", [])[:limit]
+        return pd.DataFrame(
+            [
+                {
+                    "ยอดชดเชยทั้งสิ้น": row["amount"],
+                    "จำนวนครั้ง": row["count"],
+                    "รวมเงิน": row["sum"],
+                }
+                for row in rows
+            ],
+            columns=["ยอดชดเชยทั้งสิ้น", "จำนวนครั้ง", "รวมเงิน"],
+        )
 
 
 def get_records_for_hcode(hcode: str) -> pd.DataFrame:
