@@ -1,5 +1,5 @@
 {
-  "_source": "rate_claim: ประกาศสำนักงานหลักประกันสุขภาพแห่งชาติ เรื่อง PP Fee Schedule ปีงบประมาณ 2569 (official NHSO document, pages 95-103) -- อัตราเต็มที่ปรากฏจริงในข้อมูล PP/FS ที่บันทึก. rate_facility_share: 'P&P_Fee_2569_รพสต_15รายการ.xlsx' (มติจัดสรรจังหวัดล่าสุด ปีงบ 2569) -- อัตราที่ รพ.สต. ได้รับจริง superseding มติปีงบ 2568 รอบ2 ที่เคยใช้",
+  "_source": "rate_claim: หลักเกณฑ์ PP Fee Schedule ปีงบประมาณ 2569 และตารางอ้างอิง 15 รายการของหน่วยงาน; rate_facility_share: ตาราง 'รายการเบิกจ่าย_รพสต_15รายการ_แยกสปสชและจังหวัด_ปรับตามไฟล์ล่าสุด.xlsx' ซึ่งระบุให้ยึดตามไฟล์ที่ผู้ใช้แก้. รายการ 15 ใช้อัตรา local reference 80/20 เพราะรหัส/วิธีตรวจ NHSO ต้องยืนยันแยกต่างหาก",
   "_note": "rate_claim ใช้จับคู่/คาดการณ์บริการ (Step 3-4) เท่านั้น. rate_facility_share ใช้เฉพาะตารางเปรียบเทียบยอด (Step 5) เท่านั้น ห้ามใช้ rate_facility_share ในการจับคู่กับยอดดิบ. รายการ 9.1/9.2 มีหน่วยเป็น 'ต่อแผง' ในมติจัดสรร แต่ rate_claim ใช้หน่วย 'ต่อครั้ง' (=3 แผง) ตามที่ปรากฏจริงในข้อมูล จึงคูณ rate_facility_share ด้วย 3 เพื่อให้หน่วยตรงกัน. matchable:false = รายการอ้างอิงเก็บไว้ แต่ไม่ใช้จับคู่ เพราะขอบเขตปัจจุบันจำกัดไว้เฉพาะ 9 รายการที่ตรงกับตาราง 'PP free Schedule จนสต.' ที่หน่วยงานใช้รายงานจริง",
   "items": [
     {"code": "1", "name": "ตรวจปัสสาวะทดสอบการตั้งครรภ์", "short": "ตรวจปัสสาวะตั้งครรภ์", "rate_claim": 75, "rate_facility_share": 37.5, "matchable": true},
@@ -23,10 +23,10 @@
     {"code": "10.1", "name": "ประเมินปัจจัยเสี่ยง: FPG", "rate_claim": 40, "rate_facility_share": 40, "matchable": false},
     {"code": "10.2", "name": "ประเมินปัจจัยเสี่ยง: Total cholesterol และ HDL", "rate_claim": 160, "rate_facility_share": 20, "matchable": false},
     {"code": "11", "name": "ให้วัคซีนป้องกันโรค (EPI, dT, ไข้หวัดใหญ่, aP ฯลฯ)", "rate_claim": 20, "rate_facility_share": 20, "matchable": false},
-    {"code": "12", "name": "คัดกรองวัณโรคด้วย Chest X-ray", "rate_claim": 100, "rate_facility_share": 80, "matchable": false, "note": "สัดส่วน รพ.:รพ.สต. อบจ.เพชรบูรณ์ = 20:80 -- รพ.สต. ได้ 80% ของอัตราเต็ม"},
+    {"code": "12", "name": "คัดกรองวัณโรคด้วย Chest X-ray", "rate_claim": 100, "rate_facility_share": 100, "matchable": false, "note": "มติจัดสรรจังหวัดฉบับล่าสุดที่ผู้ใช้แก้: รพ.สต. ได้ 100 บาท/ครั้ง"},
     {"code": "13.1", "name": "ตรวจคัดกรองไวรัสตับอักเสบ บี", "rate_claim": 50, "rate_facility_share": 20, "matchable": false},
     {"code": "13.2", "name": "ตรวจคัดกรองไวรัสตับอักเสบ ซี (Anti-HCV)", "rate_claim": 50, "rate_facility_share": 20, "matchable": false},
     {"code": "14", "name": "เก็บสิ่งส่งตรวจทางห้องปฏิบัติการ", "rate_claim": 80, "rate_facility_share": null, "matchable": false, "note": "จ่ายตามข้อตกลง CUP: อ.เมืองเพชรบูรณ์ รพ.80:รพ.สต.20; อ.หล่มเก่า รพ.40:รพ.สต.60 -- ไม่ใช่อัตราคงที่ ต้องระบุโซน CUP ก่อนคำนวณ"},
-    {"code": "15", "name": "เจาะเลือดตรวจ LAB (HbA1c, Creatinine, Potassium)", "rate_claim": 60, "rate_facility_share": 20, "matchable": false}
+    {"code": "15", "name": "เจาะเลือดตรวจ LAB (HbA1c, Creatinine, Potassium)", "rate_claim": 80, "rate_facility_share": 20, "matchable": false, "note": "ยึดตารางจัดสรรจังหวัดฉบับล่าสุดที่ผู้ใช้แก้: อัตราเต็ม 80 บาท / รพ.สต. 20 บาท; ใช้เป็น local allocation reference และยังห้ามฟันธงบริการจากยอดเงินอย่างเดียว"}
   ]
 }

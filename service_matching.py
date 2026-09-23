@@ -12,8 +12,11 @@ import json
 import os
 from collections import defaultdict
 
+import service_conditions
+
 _RATES_PATH = os.path.join(os.path.dirname(__file__), "assets", "service_rates.json")
 _RULES_PATH = os.path.join(os.path.dirname(__file__), "assets", "amount_rules.json")
+_USER_CONFIRMED_PATH = os.path.join(os.path.dirname(__file__), "assets", "user_confirmed_mapping_2569.json")
 _AMOUNT_TOLERANCE = 0.01
 
 
@@ -32,10 +35,32 @@ def _load_amount_rules() -> dict[float, dict]:
 AMOUNT_RULES = _load_amount_rules()
 
 
+def _load_user_confirmed_rules() -> dict[float, dict]:
+    try:
+        with open(_USER_CONFIRMED_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    result: dict[float, dict] = {}
+    for rule in data.get("mappings", []):
+        normalized = dict(rule)
+        normalized["items"] = list(rule.get("codes", []))
+        normalized["kind"] = "ยืนยันโดยผู้ใช้"
+        normalized["source"] = "user_confirmed_mapping_2569"
+        result[round(float(rule["amount"]), 2)] = normalized
+    return result
+
+
+USER_CONFIRMED_RULES = _load_user_confirmed_rules()
+
+
 def rule_for_amount(amount: float) -> dict | None:
     if amount is None or amount <= 0:
         return None
     rounded = round(float(amount), 2)
+    for value, rule in USER_CONFIRMED_RULES.items():
+        if abs(value - rounded) <= _AMOUNT_TOLERANCE:
+            return rule
     for value, rule in AMOUNT_RULES.items():
         if abs(value - rounded) <= _AMOUNT_TOLERANCE:
             return rule
@@ -79,6 +104,37 @@ def _load_name_by_code() -> dict[str, str]:
 
 
 NAME_BY_CODE = _load_name_by_code()
+
+
+def condition_audit_for_amount(amount: float) -> dict:
+    """Read-only condition audit for one raw amount.
+
+    This does not change the legacy mapper yet. It exposes all exact service
+    codes in the FY2569 rule book (including services currently marked
+    matchable:false), so callers can see when an amount is unsafe to auto-map.
+    """
+    if amount is None or amount <= 0:
+        return {"status": "empty", "amount": amount, "candidate_codes": [], "candidate_names": []}
+    codes = service_conditions.codes_for_exact_amount(float(amount))
+    names = [service_conditions.NAME_BY_CODE.get(code, code) for code in codes]
+    if len(codes) == 1:
+        status = "unique_exact_rate"
+    elif len(codes) > 1:
+        status = "ambiguous_exact_rate"
+    else:
+        status = "no_exact_rate"
+    return {
+        "status": status,
+        "amount": round(float(amount), 2),
+        "candidate_codes": codes,
+        "candidate_names": names,
+        "amount_only_ambiguous": service_conditions.amount_is_ambiguous(float(amount)),
+    }
+
+
+def assess_combo_conditions(service_names: list[str]) -> service_conditions.ComboAssessment:
+    """Apply FY2569 same-claim conditions to a proposed service combination."""
+    return service_conditions.assess_same_claim_names(service_names)
 
 
 def _load_rate_index() -> dict[float, list[str]]:

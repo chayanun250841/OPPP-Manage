@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS records (
     full_name TEXT,
     hcode TEXT NOT NULL,
     visit_date TEXT,
+    projcode TEXT,
+    htype_hcode TEXT,
+    hcode_paid TEXT,
+    billed_amount NUMERIC,
     pp NUMERIC NOT NULL DEFAULT 0,
     fs NUMERIC NOT NULL DEFAULT 0,
     total NUMERIC NOT NULL DEFAULT 0,
@@ -57,6 +61,10 @@ CREATE TABLE IF NOT EXISTS records (
 -- grand_total = คอลัมน์สุดท้าย 'ยอดชดเชยทั้งสิ้น' ของแฟ้มต้นทาง (อาจมากกว่า pp+fs
 -- เมื่อแถวนั้นได้เงินจากกองทุนอื่นด้วย) เพิ่มทีหลังจึงต้อง ALTER สำหรับฐานเดิม
 ALTER TABLE records ADD COLUMN IF NOT EXISTS grand_total NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS projcode TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS htype_hcode TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS hcode_paid TEXT;
+ALTER TABLE records ADD COLUMN IF NOT EXISTS billed_amount NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_records_hcode ON records(hcode);
 CREATE INDEX IF NOT EXISTS idx_records_batch ON records(batch_id);
 CREATE INDEX IF NOT EXISTS idx_records_period ON records(report_period);
@@ -126,6 +134,10 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
                     row["ชื่อ-นามสกุล"],
                     row["HCODE"],
                     row["วันเข้ารักษา"],
+                    row.get("PROJCODE", ""),
+                    row.get("HTYPE_HCODE", ""),
+                    row.get("HCODE_PAID", ""),
+                    float(row.get("เรียกเก็บ", 0) or 0),
                     float(row["PP"]),
                     float(row["FS"]),
                     float(row["ยอดรวม"]),
@@ -139,7 +151,7 @@ def insert_batch(report_period: str, source_file: str, uploaded_by: str, frame: 
                     cur,
                     """
                     INSERT INTO records
-                        (record_code, batch_id, report_period, tran_id, pid, full_name, hcode, visit_date, pp, fs, total, grand_total, source_file)
+                        (record_code, batch_id, report_period, tran_id, pid, full_name, hcode, visit_date, projcode, htype_hcode, hcode_paid, billed_amount, pp, fs, total, grand_total, source_file)
                     VALUES %s
                     ON CONFLICT (record_code) DO NOTHING
                     """,
@@ -344,9 +356,15 @@ def get_people_records_for_hcode(hcode: str) -> pd.DataFrame:
     """Per-person records for one facility, including PID/name -- admin only."""
     query = """
         SELECT
+            r.report_period AS "รอบรายงาน",
             r.hcode AS "HCODE",
             r.pid AS "PID",
             r.full_name AS "ชื่อ-นามสกุล",
+            r.visit_date AS "วันเข้ารักษา",
+            r.projcode AS "PROJCODE",
+            r.htype_hcode AS "HTYPE_HCODE",
+            r.hcode_paid AS "HCODE_PAID",
+            r.billed_amount AS "เรียกเก็บ",
             r.pp AS "PP",
             r.fs AS "FS",
             r.total AS "ยอดรวม"

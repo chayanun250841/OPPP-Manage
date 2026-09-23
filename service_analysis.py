@@ -1,19 +1,14 @@
-"""Per-facility service reconciliation pipeline (admin only -- has PID/name).
+"""Per-facility FY2569 PP service reconciliation pipeline.
 
-Follows this exact workflow:
-  1. Group raw records by HCODE
-  2. Each HCODE's people: PID, name, PP, FS
-  3. Per record, predict service(s) from PP and FS separately using combo
-     matching against the 15-item claim-rate list (rate_claim = full SPSC
-     schedule rate, which is what actually appears in the raw PP/FS amounts)
-  4. Summarize predicted item counts for the facility
-  5. Reconciliation: value at SPSC's full rate (rate_claim) vs value actually
-     allocated to the facility per the provincial agreement
-     (rate_facility_share)
+PP is classified per record with the same proof-grade rules used by the final
+allocation audit: explicit user-confirmed mappings, service conditions,
+HCODE/HTYPE/billed context for transferred units, child-service closure, and
+PID frequency guards. Closest-match arithmetic is not used for allocation.
 
-Prediction runs on PP and FS separately (not combined into ยอดรวม) because the
-15 reference items are PP Fee schedule items -- mixing in FS would corrupt the
-match. Each record's PP and FS amounts are decomposed independently.
+FS/WALKIN is preserved and displayed separately; it is never decomposed into
+P&P 15-item services. Validated zero-claim-money facility adjustments are
+applied after PP service counting, so they can change provincial allocation
+without creating or removing NHSO claim money.
 """
 from __future__ import annotations
 
@@ -25,6 +20,7 @@ from html import escape
 import pandas as pd
 
 import db
+import proof_grade_mapper
 import service_matching
 
 logger = logging.getLogger(__name__)
@@ -39,7 +35,17 @@ def _load_items() -> list[dict]:
             data = json.load(file)
     except (OSError, json.JSONDecodeError):
         return []
-    return [item for item in data.get("items", []) if item.get("matchable")]
+    explicit_codes = {
+        str(code)
+        for rule in service_matching.USER_CONFIRMED_RULES.values()
+        for code in rule.get("items", [])
+    }
+    for rule in proof_grade_mapper.TRANSFER_BILLED_RULES.values():
+        explicit_codes.update(str(code) for code in rule.get("codes", []))
+    return [
+        item for item in data.get("items", [])
+        if item.get("matchable") or str(item.get("code")) in explicit_codes
+    ]
 
 
 MATCHABLE_ITEMS = _load_items()
@@ -140,7 +146,7 @@ def _apply_adjustments(counts: dict[str, int], hcode: str | None) -> None:
         for name, delta in entry["deltas"].items():
             counts[name] = counts.get(name, 0) + delta
 
-PEOPLE_COLUMNS = ["HCODE", "PID", "ชื่อ-นามสกุล", "PP", "FS", "ยอดรวม"]
+PEOPLE_COLUMNS = ["รอบรายงาน", "HCODE", "PID", "ชื่อ-นามสกุล", "วันเข้ารักษา", "PROJCODE", "HTYPE_HCODE", "HCODE_PAID", "เรียกเก็บ", "PP", "FS", "ยอดรวม"]
 PREDICTION_COLUMNS = ["PID", "ชื่อ-นามสกุล", "PP", "FS", "บริการที่คาดการณ์ (PP)", "บริการที่คาดการณ์ (FS)", "สถานะ"]
 COUNT_COLUMNS = ["รายการบริการ", "จำนวนครั้ง"]
 RECONCILE_COLUMNS = [
@@ -150,6 +156,65 @@ RECONCILE_COLUMNS = [
 ]
 
 _STATUS_RANK = {"🔴 ไม่พบ": 0, "🟠 ใกล้เคียง": 1, "🟡 ไม่แน่ชัด": 2, "🟢 คาดการณ์": 3, "-": 4}
+
+
+def _clean_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _clean_money(value: object) -> float:
+    if value is None or pd.isna(value):
+        return 0.0
+    return float(value or 0)
+
+
+def _age_hint_from_name(name: object) -> str:
+    """Use only explicit Thai child titles as child evidence."""
+    compact = _clean_text(name).replace(" ", "")
+    child_prefixes = ("ด.ช.", "ด.ช", "ดช.", "ดช", "เด็กชาย", "ด.ญ.", "ด.ญ", "ดญ.", "ดญ", "เด็กหญิง")
+    return "child" if compact.startswith(child_prefixes) else ""
+
+
+def _effective_projcode(rec: dict) -> str:
+    """Use stored PROJCODE, with a bounded fallback for the current FY2569 DB."""
+    current = _clean_text(rec.get("PROJCODE")).upper()
+    if current:
+        return current
+    fs = _clean_money(rec.get("FS"))
+    if fs <= 0:
+        return ""
+    fallback = proof_grade_mapper.PROVINCIAL_CLOSURE_DATA.get("legacy_fs_fallback") or {}
+    through = str(fallback.get("through_report_period") or "")
+    period = _clean_text(rec.get("รอบรายงาน"))
+    if period and through and period <= through:
+        return _clean_text(fallback.get("assume_projcode")).upper()
+    if not period and not _clean_text(rec.get("PID")) and not _clean_text(rec.get("ชื่อ-นามสกุล")):
+        return _clean_text(fallback.get("assume_projcode")).upper()
+    return ""
+
+
+def _decision_names(decision: proof_grade_mapper.FieldDecision) -> list[str]:
+    return [
+        NAME_BY_CODE.get(str(code), proof_grade_mapper.ITEMS.get(str(code), {}).get("name", str(code)))
+        for code in decision.codes
+    ]
+
+
+def _decision_display(decision: proof_grade_mapper.FieldDecision) -> tuple[str, str, list[str]]:
+    if decision.amount <= 0:
+        return "-", "-", []
+    if decision.status == "excluded_fs_walkin":
+        return "-", "FS/WALKIN แยกออกจาก P&P 15 รายการ", []
+    if decision.certified:
+        names = _decision_names(decision)
+        if names:
+            return "🟢 คาดการณ์", " + ".join(names), names
+        label = next((str(x) for x in decision.reasons if str(x).strip()), "อยู่นอก 15 รายการจังหวัด")
+        return "🟢 คาดการณ์", label, []
+    reason = next((str(x) for x in decision.reasons if str(x).strip()), decision.status)
+    return "🟡 ไม่แน่ชัด", reason, []
 
 
 def get_people_for_hcode(hcode: str) -> pd.DataFrame:
@@ -169,9 +234,15 @@ def get_people_for_hcode(hcode: str) -> pd.DataFrame:
         fs = safe["fs"].astype(float)
         people = pd.DataFrame(
             {
+                "รอบรายงาน": [""] * len(safe),
                 "HCODE": [str(hcode)] * len(safe),
                 "PID": [""] * len(safe),
                 "ชื่อ-นามสกุล": [""] * len(safe),
+                "วันเข้ารักษา": [""] * len(safe),
+                "PROJCODE": ["WALKIN" if float(value) > 0 else "" for value in fs],
+                "HTYPE_HCODE": [""] * len(safe),
+                "HCODE_PAID": [""] * len(safe),
+                "เรียกเก็บ": [0.0] * len(safe),
                 "PP": pp,
                 "FS": fs,
                 "ยอดรวม": pp + fs,
@@ -179,83 +250,90 @@ def get_people_for_hcode(hcode: str) -> pd.DataFrame:
         )
     if people.empty:
         return pd.DataFrame(columns=PEOPLE_COLUMNS)
+    for column in PEOPLE_COLUMNS:
+        if column not in people.columns:
+            people[column] = 0.0 if column in ("เรียกเก็บ", "PP", "FS", "ยอดรวม") else ""
     return people[PEOPLE_COLUMNS]
 
 
 def predict_records(people: pd.DataFrame) -> pd.DataFrame:
-    """Step 3: per-record combo prediction, PP and FS decomposed separately."""
+    """Step 3: classify PP with the proof-grade record rules; keep FS separate."""
     if people.empty:
         return pd.DataFrame(columns=PREDICTION_COLUMNS)
 
-    rows = []
+    prepared = []
     for rec in people.to_dict(orient="records"):
-        pp_status, pp_combos, pp_diff = service_matching.resolve_combo(float(rec["PP"]))
-        fs_status, fs_combos, fs_diff = service_matching.resolve_combo(float(rec["FS"]))
+        pp_context = {
+            "pp": _clean_money(rec.get("PP")),
+            "hcode": _clean_text(rec.get("HCODE")),
+            "htype_hcode": _clean_text(rec.get("HTYPE_HCODE")),
+            "hcode_paid": _clean_text(rec.get("HCODE_PAID")),
+            "billed_amount": _clean_money(rec.get("เรียกเก็บ")),
+            "age_hint": _age_hint_from_name(rec.get("ชื่อ-นามสกุล")),
+        }
+        prepared.append({
+            "pid": _clean_text(rec.get("PID")),
+            "visit_day": _clean_text(rec.get("วันเข้ารักษา")),
+            "pp_decision": proof_grade_mapper.decide_pp_record(pp_context),
+            "fs_decision": proof_grade_mapper.decide_fs_amount(
+                _clean_money(rec.get("FS")), _effective_projcode(rec)
+            ),
+            "record": rec,
+        })
+
+    # Use the same annual PID/frequency safety gate as the proof report.
+    proof_grade_mapper._apply_pid_frequency_gate(prepared)
+
+    rows = []
+    for prepared_row in prepared:
+        rec = prepared_row["record"]
+        pp_decision = prepared_row["pp_decision"]
+        fs_decision = prepared_row["fs_decision"]
+        pp_status, pp_text, pp_names = _decision_display(pp_decision)
+        fs_status, fs_text, fs_names = _decision_display(fs_decision)
         overall_status = min(pp_status, fs_status, key=lambda s: _STATUS_RANK[s])
         rows.append({
-            "PID": rec["PID"],
-            "ชื่อ-นามสกุล": rec["ชื่อ-นามสกุล"],
-            "PP": rec["PP"],
-            "FS": rec["FS"],
-            "บริการที่คาดการณ์ (PP)": service_matching.format_combo_text(pp_status, pp_combos, pp_diff),
-            "บริการที่คาดการณ์ (FS)": service_matching.format_combo_text(fs_status, fs_combos, fs_diff),
+            "PID": rec.get("PID", ""),
+            "ชื่อ-นามสกุล": rec.get("ชื่อ-นามสกุล", ""),
+            "PP": _clean_money(rec.get("PP")),
+            "FS": _clean_money(rec.get("FS")),
+            "บริการที่คาดการณ์ (PP)": pp_text,
+            "บริการที่คาดการณ์ (FS)": fs_text,
             "สถานะ": overall_status,
             "_pp_status": pp_status,
-            "_pp_combo": pp_combos[0] if pp_status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง") else [],
-            "_pp_diff": pp_diff,
+            "_pp_combo": pp_names,
+            "_pp_diff": 0.0,
+            "_pp_certified": bool(pp_decision.certified),
+            "_pp_decision_status": pp_decision.status,
+            "_pp_provincial": float(pp_decision.provincial_amount or 0) if pp_decision.certified else 0.0,
             "_fs_status": fs_status,
-            "_fs_combo": fs_combos[0] if fs_status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง") else [],
-            "_fs_diff": fs_diff,
+            "_fs_combo": fs_names,
+            "_fs_diff": 0.0,
+            "_fs_decision_status": fs_decision.status,
         })
     return pd.DataFrame(rows)
 
 
 def summarize_item_counts(predictions: pd.DataFrame, hcode: str | None = None) -> pd.DataFrame:
-    """Step 4: count item hits across the facility. Confident (🟢) and
-    closest-match (🟠) hits are both attributed to their matched item, since
-    the goal is to match amounts as closely as possible; truly ambiguous (🟡)
-    and unmatched (🔴) amounts are kept visible as their own catch-all rows
-    rather than silently dropped or guessed into a specific item.
-
-    `hcode` is optional only so old callers keep working; pass it whenever it is
-    known, otherwise that facility's manual overrides are skipped."""
+    """Step 4: count only proof-grade PP service hits; FS is never counted here."""
     if predictions.empty:
         return pd.DataFrame(columns=COUNT_COLUMNS)
 
     counts: dict[str, int] = {name: 0 for name in ITEM_NAMES}
     unclear = 0
-    notfound = 0
-    approx_count = 0
-    approx_diff_total = 0.0
     for rec in predictions.to_dict(orient="records"):
-        for status_key, combo_key, diff_key in (
-            ("_pp_status", "_pp_combo", "_pp_diff"),
-            ("_fs_status", "_fs_combo", "_fs_diff"),
-        ):
-            status = rec[status_key]
-            if status in ("🟢 คาดการณ์", "🟠 ใกล้เคียง"):
-                for name in rec[combo_key]:
-                    counts[name] = counts.get(name, 0) + 1
-                if status == "🟠 ใกล้เคียง":
-                    approx_count += 1
-                    approx_diff_total += rec[diff_key]
-            elif status == "🟡 ไม่แน่ชัด":
-                unclear += 1
-            elif status == "🔴 ไม่พบ":
-                notfound += 1
+        status = rec.get("_pp_status")
+        if status == "🟢 คาดการณ์":
+            for name in rec.get("_pp_combo", []):
+                counts[name] = counts.get(name, 0) + 1
+        elif float(rec.get("PP") or 0) > 0:
+            unclear += 1
 
     _apply_adjustments(counts, hcode)
 
     rows = [{"รายการบริการ": name, "จำนวนครั้ง": count} for name, count in counts.items() if count > 0]
-    if approx_count:
-        rows.append({
-            "รายการบริการ": f"🟠 นับรวมข้างต้นแล้ว {approx_count} รายการเป็นการจับคู่แบบใกล้เคียง (ส่วนต่างรวม {approx_diff_total:,.2f} บาท)",
-            "จำนวนครั้ง": approx_count,
-        })
     if unclear:
         rows.append({"รายการบริการ": "🟡 ยังไม่แน่ชัด (ต้องตรวจสอบ)", "จำนวนครั้ง": unclear})
-    if notfound:
-        rows.append({"รายการบริการ": "🔴 ไม่พบรายการที่ตรงกัน", "จำนวนครั้ง": notfound})
     if not rows:
         return pd.DataFrame(columns=COUNT_COLUMNS)
     return pd.DataFrame(rows).sort_values("จำนวนครั้ง", ascending=False).reset_index(drop=True)
@@ -385,11 +463,17 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
     rows = []
     for rec in totals_by_hcode.to_dict(orient="records"):
         hcode = str(rec["HCODE"])
-        facility_total = float(rec["ยอดรวม"])
+        facility_pp = float(rec["PP"])
+        facility_fs = float(rec["FS"])
 
         people = get_people_for_hcode(hcode)
         predictions = predict_records(people)
         counts = summarize_item_counts(predictions, hcode)
+        unresolved_pp = round(sum(
+            float(row.get("PP") or 0)
+            for row in predictions.to_dict(orient="records")
+            if float(row.get("PP") or 0) > 0 and not bool(row.get("_pp_certified"))
+        ), 2)
         count_by_item = {c["รายการบริการ"]: int(c["จำนวนครั้ง"]) for c in counts.to_dict(orient="records")}
 
         row: dict[str, object] = {"HCODE": hcode, "ชื่อหน่วยบริการ": hcode_names.get(hcode, "")}
@@ -407,8 +491,9 @@ def build_all_facilities_pivot(hcode_names: dict[str, str]) -> pd.DataFrame:
             matched_claim_total += claim_amount
             matched_share_total += share_amount
 
-        row[f"ยังไม่จัดประเภท | {AMOUNT_SUB}"] = round(facility_total - matched_claim_total, 2)
-        row[f"รวมจาก สปสช. | {AMOUNT_SUB}"] = round(facility_total, 2)
+        row[f"ยังไม่จัดประเภท | {AMOUNT_SUB}"] = unresolved_pp
+        row[f"FS/WALKIN แยก | {AMOUNT_SUB}"] = round(facility_fs, 2)
+        row[f"รวมจาก สปสช. | {AMOUNT_SUB}"] = round(facility_pp, 2)
         row[f"จัดสรรตามมติจังหวัด | {AMOUNT_SUB}"] = round(matched_share_total, 2)
         rows.append(row)
 

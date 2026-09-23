@@ -565,6 +565,10 @@ def parse_report(path: str) -> tuple[pd.DataFrame, dict[str, int]]:
     header = sheet.iloc[header_row].where(sheet.iloc[header_row].notna(), sheet.iloc[header_row - 1])
     columns = {label: find_column(header, label) for label in ["TRAN_ID", "PID", "ชื่อ-นามสกุล", "HCODE", "PP", "FS"]}
     date_col = find_column(header, "วันเข้ารักษา")
+    projcode_col = find_column(header, "PROJCODE")
+    htype_col = find_column(header, "HTYPE_HCODE")
+    hcode_paid_col = find_column(header, "HCODE_PAID")
+    billed_col = find_column(header, "เรียกเก็บ")
     grand_col = find_column(header, GRAND_TOTAL_LABEL)
     rows = sheet.iloc[header_row + 2 :].copy()
 
@@ -577,6 +581,10 @@ def parse_report(path: str) -> tuple[pd.DataFrame, dict[str, int]]:
             "ชื่อ-นามสกุล": rows.iloc[:, columns["ชื่อ-นามสกุล"]].map(text_value),
             "HCODE": rows.iloc[:, columns["HCODE"]].map(hcode_value),
             "วันเข้ารักษา": pd.to_datetime(rows.iloc[:, date_col], errors="coerce").dt.date.astype("string"),
+            "PROJCODE": rows.iloc[:, projcode_col].map(text_value),
+            "HTYPE_HCODE": rows.iloc[:, htype_col].map(text_value),
+            "HCODE_PAID": rows.iloc[:, hcode_paid_col].map(hcode_value),
+            "เรียกเก็บ": rows.iloc[:, billed_col].map(money_value),
             "PP": rows.iloc[:, columns["PP"]].map(money_value),
             "FS": rows.iloc[:, columns["FS"]].map(money_value),
             GRAND_TOTAL_LABEL: rows.iloc[:, grand_col].map(money_value),

@@ -1,0 +1,342 @@
+{
+  "_schema_version": 1,
+  "_fiscal_year_be": 2569,
+  "_created_at": "2026-09-23",
+  "_purpose": "กติกาสำหรับคัดกรอง candidate ก่อน Mapping ยอด PP/FS เป็นรายการบริการ ห้ามใช้ยอดเงินอย่างเดียวฟันธงเมื่อมีหลายบริการหรือหลาย combination ที่เป็นไปได้",
+  "_mapping_policy": {
+    "closest_match_for_allocation": false,
+    "prefer_shortest_combo_as_truth": false,
+    "exact_single_rate_can_auto_assign": "only_when_rate_is_unique_among_candidate_services_and_no_hard_condition_is_violated",
+    "ambiguous_amount_action": "hold_unclassified_until_context_resolves",
+    "unknown_amount_action": "hold_unclassified",
+    "money_conservation": "raw_amount = confirmed_mapped_amount + ambiguous_amount + unknown_amount",
+    "context_priority": ["PID", "visit_date", "report_period", "HCODE", "service_history", "age", "sex", "pregnancy_context", "postpartum_context", "risk_group"],
+    "note": "ถ้าข้อมูลบริบทไม่มี ให้ลดระดับความมั่นใจแทนการเดา"
+  },
+  "_sources": [
+    {
+      "id": "LOCAL_CRITERIA_2569",
+      "type": "local_reference",
+      "path": "../หลักเกณฑ์การจ่ายชี้แจง 2569_Modify_รพสต_Crอนุพงษ์_J2.pdf",
+      "use": "รายการและอัตรา PP Fee Schedule ปี 2569"
+    },
+    {
+      "id": "LOCAL_PROVINCIAL_ALLOCATION_2569",
+      "type": "local_reference",
+      "path": "../outputs/pp_fee_from_images/P&P_Fee_2569_รพสต_15รายการ.xlsx",
+      "use": "อัตราที่หน่วยบริการได้รับตามมติจัดสรรจังหวัด"
+    },
+    {
+      "id": "NHSO_2569_RULES_MIRROR",
+      "type": "public_reference_copy",
+      "url": "https://fliphtml5.com/wiidd/cytc/9.%E0%B8%AB%E0%B8%A5%E0%B8%B1%E0%B8%81%E0%B9%80%E0%B8%81%E0%B8%93%E0%B8%91%E0%B9%8C%E0%B9%81%E0%B8%A5%E0%B8%B0%E0%B9%80%E0%B8%87%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%99%E0%B9%84%E0%B8%82%E0%B8%9A%E0%B8%A3%E0%B8%B4%E0%B8%81%E0%B8%B2%E0%B8%A3_PP_%E0%B8%9B%E0%B8%B52569_%E0%B8%9B%E0%B8%A3%E0%B8%B1%E0%B8%9A/",
+      "use": "เงื่อนไข/ความถี่บริการปี 2569; เป็นสำเนาเอกสารนำเสนอ NHSO ใช้ประกอบกับเอกสาร local/ประกาศ"
+    },
+    {
+      "id": "NHSO_GAZETTE_2569",
+      "type": "official_reference",
+      "url": "https://law.nhso.go.th/files/forms/MzEw/41246449-697d-4a59-9b8a-a1dd72390f97-134091246468362815.pdf",
+      "use": "ประกาศ/อัตราจ่ายบริการสร้างเสริมสุขภาพและป้องกันโรค"
+    }
+  ],
+  "services": {
+    "1": {
+      "name": "ตรวจปัสสาวะทดสอบการตั้งครรภ์",
+      "claim_rate": 75,
+      "family": "pregnancy_test",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max": 4, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "หญิงวัยเจริญพันธุ์ที่สงสัยตั้งครรภ์หรือประจำเดือนไม่มาตามกำหนด", "requires_context": ["sex", "clinical_context"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "2.1": {
+      "name": "ฝากครรภ์: ดูแล ANC",
+      "claim_rate": 360,
+      "family": "anc",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "pregnancy", "max": null, "requires": ["PID", "pregnancy_context"], "strength": "context"}],
+      "target": {"description": "หญิงตั้งครรภ์", "requires_context": ["sex", "pregnancy_context"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "2.2": {
+      "name": "ตรวจช่องปากและขัดทำความสะอาดฟันในหญิงตั้งครรภ์",
+      "claim_rate": 500,
+      "family": "anc_dental",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "pregnancy", "max": 1, "requires": ["PID", "pregnancy_context"], "strength": "hard"}],
+      "target": {"description": "หญิงตั้งครรภ์", "requires_context": ["sex", "pregnancy_context"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "3.1": {
+      "name": "ตรวจหลังคลอด",
+      "claim_rate": 150,
+      "family": "postpartum_exam",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "delivery", "max": 3, "windows_days_after_delivery": [[1,7],[8,15],[16,42]], "requires": ["PID", "visit_date", "delivery_date"], "strength": "hard"}],
+      "target": {"description": "หญิงหลังคลอด", "requires_context": ["sex", "postpartum_context"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "NHSO_GAZETTE_2569", "LOCAL_CRITERIA_2569"]
+    },
+    "3.2": {
+      "name": "ยาเสริมธาตุเหล็ก กรดโฟลิก ไอโอดีนหลังคลอด (Triferdine)",
+      "claim_rate": 135,
+      "family": "postpartum_supplement",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "delivery", "max": 2, "dispense_months_each": 3, "requires": ["PID", "delivery_date"], "strength": "hard"}],
+      "target": {"description": "หญิงหลังคลอด", "requires_context": ["sex", "postpartum_context"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "NHSO_GAZETTE_2569", "LOCAL_CRITERIA_2569"]
+    },
+    "4.1": {
+      "name": "คัดกรองมะเร็งปากมดลูก: Pap smear หรือ VIA",
+      "claim_rate": 250,
+      "family": "cervical_screen",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "rolling_years", "years": 5, "max": 1, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "หญิงไทยอายุ 30-59 ปี หรือ 15-29 ปีที่มีความเสี่ยงสูง", "requires_context": ["sex", "age", "risk_group"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "4.2": {
+      "name": "เก็บตัวอย่าง HPV DNA",
+      "claim_rate": 50,
+      "family": "hpv_sample",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "screening_cycle", "years": 5, "max": 1, "requires": ["PID", "visit_date", "screening_context"], "strength": "context"}],
+      "target": {"description": "กลุ่มเป้าหมายคัดกรองมะเร็งปากมดลูก", "requires_context": ["sex", "age", "risk_group"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "50 บาทชนกับบริการอื่นหลายรายการ", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "5": {
+      "name": "FIT test คัดกรองมะเร็งลำไส้ใหญ่",
+      "claim_rate": 60,
+      "family": "fit",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "rolling_years", "years": 2, "max": 1, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "ประชากรไทยอายุ 50-70 ปี", "requires_context": ["age"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "60 บาทชนกับยาฉีดคุมกำเนิด", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "6": {
+      "name": "เคลือบฟลูออไรด์เข้มข้นเฉพาะที่",
+      "claim_rate": 100,
+      "family": "fluoride",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max": 2, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "อายุ 25-59 ปี กลุ่มเสี่ยงต่อโรคฟันผุ และกลุ่มตามเกณฑ์ที่กำหนด", "requires_context": ["age", "risk_group"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "100 บาทชนกับ Chest X-ray", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "7": {
+      "name": "CBC คัดกรองโลหิตจางจากการขาดธาตุเหล็ก",
+      "claim_rate": 65,
+      "family": "iron_anemia_screen",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "age_band", "max": 1, "bands": ["แรกเกิด-2 ปี","3-6 ปี","7-12 ปี","13-24 ปีเฉพาะผู้หญิง"], "requires": ["PID", "age", "sex"], "strength": "hard"}],
+      "target": {"description": "กลุ่มอายุตามเกณฑ์คัดกรองภาวะโลหิตจาง", "requires_context": ["age", "sex"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "8": {
+      "name": "ยาเสริมธาตุเหล็กและกรดโฟลิก",
+      "claim_rate": 80,
+      "family": "iron_folate",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max": 1, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "เขต 1-12 หญิงไทย 13-45 ปี; เขต 13 มีกลุ่มเด็กและหญิง 13-45 ปีตามเกณฑ์", "requires_context": ["age", "sex", "nhso_region"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "80 บาทชนกับ POP 1 แผง ค่าเก็บสิ่งส่งตรวจ และ LAB รายการ 15 ตามตารางท้องถิ่น", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.1": {
+      "name": "ยาเม็ดคุมกำเนิดชนิดฮอร์โมนรวม 3 แผง",
+      "claim_rate": 120,
+      "family": "contraceptive_coc",
+      "same_claim": {"max_occurrences": 1, "represents_units": 3, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max_units": 13, "unit": "แผง", "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "ผู้รับบริการวางแผนครอบครัวตามเกณฑ์", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "medium", "reason": "120 เป็นยอด 3 แผงได้ แต่ arithmetic combo อื่นอาจรวมได้เท่ากัน", "can_join_combo": false},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.2": {
+      "name": "ยาเม็ดคุมกำเนิดชนิดฮอร์โมนเดี่ยว 3 แผง",
+      "claim_rate": 240,
+      "family": "contraceptive_pop",
+      "same_claim": {"max_occurrences": 1, "represents_units": 3, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max_units": 13, "unit": "แผง", "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "เช่น หญิงให้นมบุตรไม่เกิน 1 ปี 6 เดือน หรือมีไมเกรนแบบมีออร่า ตามเกณฑ์", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "medium", "can_join_combo": false},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.1ก": {
+      "name": "ยาเม็ดคุมกำเนิดชนิดฮอร์โมนรวม 1 แผง",
+      "claim_rate": 40,
+      "family": "contraceptive_coc",
+      "same_claim": {"max_occurrences": 3, "represents_units": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max_units": 13, "unit": "แผง", "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "ผู้รับบริการวางแผนครอบครัวตามเกณฑ์", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "40 บาทชนกับ FPG", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.2ก": {
+      "name": "ยาเม็ดคุมกำเนิดชนิดฮอร์โมนเดี่ยว 1 แผง",
+      "claim_rate": 80,
+      "family": "contraceptive_pop",
+      "same_claim": {"max_occurrences": 3, "represents_units": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max_units": 13, "unit": "แผง", "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "กลุ่มที่เหมาะกับ POP ตามเกณฑ์", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "80 บาทชนกับธาตุเหล็ก สิ่งส่งตรวจ LAB รายการ 15 และ COC 2 แผง", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.3": {
+      "name": "ยาคุมกำเนิดฉุกเฉิน",
+      "claim_rate": 50,
+      "family": "emergency_contraception",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max_units": 2, "unit": "แผง", "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "ผู้รับบริการตามข้อบ่งชี้", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "50 บาทชนกับ HPV sample, HBsAg, Anti-HCV", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.4": {
+      "name": "ถุงยางอนามัยและให้คำปรึกษา",
+      "claim_rate": 10,
+      "family": "condom",
+      "same_claim": {"max_occurrences": 1, "represents_up_to_units": 10, "strength": "context"},
+      "frequency": [],
+      "target": {"description": "ผู้รับบริการวางแผนครอบครัว/ป้องกันโรคตามเกณฑ์", "requires_context": []},
+      "mapping": {"amount_only_confidence": "medium", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "9.5": {
+      "name": "ยาฉีดคุมกำเนิด",
+      "claim_rate": 60,
+      "family": "contraceptive_injection",
+      "same_claim": {"max_occurrences": 1, "strength": "hard", "reason": "หนึ่งบริการฉีดต่อ encounter; ห้ามตีเงิน 120/180 เป็น 2-3 เข็มใน transaction เดียวเพียงเพราะบวกเลขลงตัว"},
+      "frequency": [{"scope": "fiscal_year", "max": 5, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "ผู้รับบริการวางแผนครอบครัวตามเกณฑ์", "requires_context": ["sex", "contraceptive_context"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "60 บาทชนกับ FIT", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "10.1": {
+      "name": "FPG คัดกรองเบาหวาน",
+      "claim_rate": 40,
+      "family": "fpg",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "fiscal_year", "max": 1, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "อายุ 35-59 ปีตามเกณฑ์ PP", "requires_context": ["age"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "40 บาทชนกับ COC 1 แผง", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "10.2": {
+      "name": "Total Cholesterol และ HDL",
+      "claim_rate": 160,
+      "family": "lipid_screen",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [{"scope": "rolling_years", "years": 5, "max": 1, "requires": ["PID", "visit_date"], "strength": "hard"}],
+      "target": {"description": "เขต 1-12 อายุ 45-70 ปี; เขต 13 ตามกลุ่มอายุ/ความเสี่ยงที่กำหนด", "requires_context": ["age", "nhso_region", "risk_group"]},
+      "mapping": {"amount_only_confidence": "high_if_unique", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "11": {
+      "name": "ค่าบริการให้วัคซีนป้องกันโรค",
+      "claim_rate": 20,
+      "family": "vaccine_service",
+      "same_claim": {"max_occurrences": null, "strength": "context", "reason": "20 บาทต่อโดส และวันเดียวอาจมีวัคซีนต่างชนิดมากกว่าหนึ่งโดสได้ ต้องมีชนิดวัคซีนจึงตรวจซ้ำได้"},
+      "frequency": [{"scope": "vaccine_schedule", "max": null, "requires": ["PID", "visit_date", "vaccine_type"], "strength": "context"}],
+      "target": {"description": "กลุ่มเป้าหมายตามชนิดวัคซีน", "requires_context": ["age", "vaccine_type"]},
+      "mapping": {"amount_only_confidence": "medium_for_generic_vaccine_group", "reason": "จำนวน 20*n บอกจำนวนโดสได้คร่าวๆ แต่บอกชนิดวัคซีนไม่ได้", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "12": {
+      "name": "คัดกรองวัณโรคด้วย Chest X-ray",
+      "claim_rate": 100,
+      "family": "tb_cxr",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [
+        {"scope": "fiscal_year", "max": 1, "requires": ["PID", "visit_date"], "strength": "hard", "when": "general_high_risk"},
+        {"scope": "fiscal_year", "max": 3, "requires": ["PID", "visit_date", "risk_group"], "strength": "hard", "when": "prisoner"}
+      ],
+      "target": {"description": "กลุ่มเสี่ยงสูงตามเกณฑ์", "requires_context": ["risk_group"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "100 บาทชนกับ fluoride", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "13.1": {
+      "name": "คัดกรองไวรัสตับอักเสบ บี (HBsAg)",
+      "claim_rate": 50,
+      "family": "hbv_screen",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [
+        {"scope": "lifetime", "max": 1, "requires": ["PID", "birth_year"], "strength": "hard", "when": "born_before_2535_general"},
+        {"scope": "fiscal_year", "max": 1, "requires": ["PID", "risk_group"], "strength": "hard", "when": "risk_group"}
+      ],
+      "target": {"description": "ประชาชนทั่วไปที่เกิดก่อน พ.ศ.2535 หรือประชากรกลุ่มเสี่ยงตามเกณฑ์", "requires_context": ["birth_year", "risk_group"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "50 บาทชนหลายบริการ", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "13.2": {
+      "name": "คัดกรองไวรัสตับอักเสบ ซี (Anti-HCV)",
+      "claim_rate": 50,
+      "family": "hcv_screen",
+      "same_claim": {"max_occurrences": 1, "strength": "hard"},
+      "frequency": [
+        {"scope": "lifetime", "max": 1, "requires": ["PID", "birth_year"], "strength": "hard", "when": "born_before_2535_general"},
+        {"scope": "fiscal_year", "max": 1, "requires": ["PID", "risk_group"], "strength": "hard", "when": "risk_group"},
+        {"scope": "fiscal_year", "max": 3, "requires": ["PID", "risk_group"], "strength": "hard", "when": "prisoner"}
+      ],
+      "target": {"description": "ผู้เกิดก่อน พ.ศ.2535 หรือกลุ่มเสี่ยงตามเกณฑ์", "requires_context": ["birth_year", "risk_group"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "50 บาทชนหลายบริการ", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_CRITERIA_2569"]
+    },
+    "14": {
+      "name": "เก็บสิ่งส่งตรวจทางห้องปฏิบัติการนอกหน่วย",
+      "claim_rate": 80,
+      "family": "specimen_collection",
+      "same_claim": {"max_occurrences": 1, "strength": "context"},
+      "frequency": [],
+      "target": {"description": "บริการเจาะเลือด/เก็บและนำส่งสิ่งส่งตรวจนอกหน่วยตามเครือข่าย", "requires_context": ["lab_context"]},
+      "mapping": {"amount_only_confidence": "low", "reason": "80 บาทชนหลายบริการ และอัตราจัดสรรจังหวัดขึ้นกับข้อตกลง CUP", "can_join_combo": true},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_PROVINCIAL_ALLOCATION_2569"]
+    },
+    "15": {
+      "name": "เจาะเลือดตรวจ LAB (HbA1c, Creatinine, Potassium) ตามตารางจัดสรรท้องถิ่น",
+      "claim_rate": 80,
+      "family": "local_lab_bundle",
+      "same_claim": {"max_occurrences": 1, "strength": "context"},
+      "frequency": [{"scope": "clinical_program", "max": null, "requires": ["PID", "diagnosis", "lab_test_type", "visit_date"], "strength": "context"}],
+      "target": {"description": "ใช้ตามตารางจัดสรรจังหวัด; ต้องรู้ชนิด LAB ก่อนฟันธง", "requires_context": ["diagnosis", "lab_test_type"]},
+      "mapping": {"amount_only_confidence": "very_low", "reason": "ตารางจัดสรรจังหวัดฉบับล่าสุดที่ผู้ใช้แก้กำหนดอัตราเต็ม 80 บาท / รพ.สต. 20 บาทสำหรับรายการ LAB นี้ แต่เอกสาร NHSO มีหลายรหัส/วิธีตรวจ จึงห้ามใช้ 80 บาทฟันธงบริการจากยอดอย่างเดียว", "can_join_combo": false},
+      "sources": ["NHSO_2569_RULES_MIRROR", "LOCAL_PROVINCIAL_ALLOCATION_2569"]
+    }
+  },
+  "hard_same_claim_constraints": [
+    {
+      "type": "max_occurrences",
+      "description": "ใช้ services[code].same_claim.max_occurrences เป็นเพดานใน TRAN_ID เดียว"
+    },
+    {
+      "type": "pregnancy_phase",
+      "codes": ["2.1", "3.1"],
+      "relation": "reject",
+      "description": "TRAN_ID เดียวมีวันรับบริการเดียว จึงห้ามสร้าง ANC และตรวจหลังคลอดเป็น combination เดียวจากยอดเงิน"
+    },
+    {
+      "type": "pregnancy_phase",
+      "codes": ["2.1", "3.2"],
+      "relation": "reject",
+      "description": "TRAN_ID เดียวมีวันรับบริการเดียว และ ANC กับยาเสริมหลังคลอดอยู่คนละ phase"
+    }
+  ],
+  "known_amount_ambiguity": {
+    "40": ["9.1ก", "10.1"],
+    "50": ["4.2", "9.3", "13.1", "13.2"],
+    "60": ["5", "9.5"],
+    "80": ["8", "9.2ก", "14", "15"],
+    "100": ["6", "12"],
+    "120": ["9.1", "multiple-service-combinations"],
+    "160": ["10.2", "multiple-service-combinations"],
+    "240": ["9.2", "multiple-service-combinations"]
+  }
+}

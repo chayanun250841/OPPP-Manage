@@ -1,0 +1,25 @@
+{
+  "_schema_version": 2,
+  "_effective_date": "2026-09-23",
+  "_scope": "Operational mapping decisions confirmed or explicitly accepted for implementation by the user for FY2569 OPPP analysis. These override amount ambiguity for the listed raw PP amounts, but are still checked for arithmetic consistency and hard service-condition rejection.",
+  "_presentation_note": "These are operational mapping rules for the user's FY2569 allocation system. The 210/155/115 closures are evidence-backed closure rules accepted for implementation on 2026-09-23.",
+  "mappings": [
+    {"amount": 40, "label": "ยาคุมฮอร์โมนรวม 1 แผง", "codes": ["9.1ก"]},
+    {"amount": 60, "label": "ยาฉีดคุมกำเนิด", "codes": ["9.5"]},
+    {"amount": 80, "label": "ยาเสริมธาตุเหล็กและกรดโฟลิก (iron+folate)", "codes": ["8"]},
+    {"amount": 115, "label": "ตรวจปัสสาวะทดสอบการตั้งครรภ์ 75 + ยาคุมฮอร์โมนรวม 1 แผง 40", "codes": ["1", "9.1ก"], "basis": "closure accepted after arithmetic correction: 75+40=115"},
+    {"amount": 120, "label": "ยาคุมฮอร์โมนรวม 3 แผง", "codes": ["9.1"]},
+    {"amount": 135, "label": "Triferdine หลังคลอด", "codes": ["3.2"]},
+    {"amount": 150, "label": "ตรวจหลังคลอด", "codes": ["3.1"]},
+    {"amount": 155, "label": "ตรวจปัสสาวะทดสอบการตั้งครรภ์ 75 + iron+folate 80", "codes": ["1", "8"], "basis": "closure accepted after resolving the earlier 155 arithmetic mismatch"},
+    {"amount": 210, "label": "ตรวจหลังคลอด 150 + ยาฉีดคุมกำเนิด 60", "codes": ["3.1", "9.5"], "basis": "all 8 current FY2569 PP210 rows are female at HCODE07853; 6 have billed 181.5 matching observed postpartum billing 121.5 + injection 60, while the remaining 2 have strong recent ANC/postpartum history"},
+    {"amount": 345, "label": "ตรวจหลังคลอด 150 + Triferdine 135 + ยาฉีดคุม 60", "codes": ["3.1", "3.2", "9.5"]},
+    {"amount": 390, "label": "ตรวจหลังคลอด 150 + POP 3 แผง 240", "codes": ["3.1", "9.2"]},
+    {"amount": 500, "label": "ANC ทันตกรรม", "codes": ["2.2"]}
+  ],
+  "resolved_correction": {
+    "earlier_statement": "155 = 40 + 75",
+    "correction": "40 + 75 = 115; therefore PP115 uses 75+40, while PP155 uses 75+80",
+    "status": "applied"
+  }
+}
